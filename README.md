@@ -7,6 +7,18 @@
 순수 정적 사이트(HTML/CSS/JS) + [Supabase](https://supabase.com)(무료 Postgres DB)로
 만들어져서, 별도 서버를 계속 켜둘 필요 없이 GitHub Pages에서 바로 돌아갑니다.
 
+## 배포 상태
+
+- Supabase 프로젝트 연결 완료 (`docs/js/supabase-config.js`에 URL/키 반영됨)
+- 저장소 Public 전환 완료
+- GitHub Pages: 저장소 **Settings → Pages** 에서 Source가 `Deploy from a branch`로
+  켜져 있는지 확인하세요. 켜져 있다면 아래 링크로 접속됩니다.
+
+  **https://sujeong-yooon.github.io/boptogether/**
+
+  (아직 링크가 안 열린다면 Pages 설정에서 폴더가 `/docs`로 되어 있는지,
+  Branch가 지금 코드가 올라간 브랜치로 되어 있는지 확인해주세요.)
+
 ## 기능
 
 - 캘린더에서 날짜 선택 후 주문 등록 (주문자이름 / 매장명 / 주문날짜 / 주문시간)
@@ -14,7 +26,7 @@
 - 참여자별 정산금액 입력, 정산 계좌(은행명 / 예금주 / 계좌번호) 등록
 - 참여자 삭제, 실시간 합계 표시
 
-## 배포하기 (링크로 공유용, 최초 1회만 설정)
+## 처음부터 다시 배포하는 방법 (참고용 / 다른 사람이 포크할 경우)
 
 ### 1. Supabase 프로젝트 만들기 (무료, 카드 등록 불필요)
 
