@@ -66,7 +66,25 @@
         inputmode="numeric"
         pattern="[0-9]{4}"
         maxlength="4"
-        placeholder="정산 계좌/금액 수정할 때 필요해요"
+        placeholder="계좌 수정·주문 삭제할 때 필요해요 (나만 알기)"
+      />
+
+      <label for="quizQuestion">계좌 확인 퀴즈 질문</label>
+      <input
+        type="text"
+        id="quizQuestion"
+        required
+        maxlength="50"
+        placeholder="예: 우리 팀 회식 단골 메뉴는?"
+      />
+
+      <label for="quizAnswer">퀴즈 정답</label>
+      <input
+        type="text"
+        id="quizAnswer"
+        required
+        maxlength="30"
+        placeholder="참여자들에게 알려줄 정답이에요"
       />
 
       <p class="error-text" id="newOrderError"></p>

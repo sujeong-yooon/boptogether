@@ -538,6 +538,11 @@ input:focus {
   justify-content: space-between;
 }
 
+.reveal-box {
+  margin-top: 10px;
+  padding-top: 4px;
+}
+
 .settle-summary .label {
   color: var(--text-muted);
 }

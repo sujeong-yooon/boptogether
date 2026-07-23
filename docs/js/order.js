@@ -16,9 +16,13 @@ const toast = document.getElementById('toast');
 
 const MAX_PARTICIPANTS = 10;
 
-// pin_hash는 절대 클라이언트로 내려받지 않도록 컬럼을 명시적으로 지정
+// pin_hash/quiz_answer_hash/계좌 정보는 절대 일반 조회로 내려받지 않도록
+// 컬럼을 명시적으로 지정 (계좌는 reveal_settlement() 함수로 퀴즈를 맞혀야만 받아옴)
 const ORDER_COLUMNS =
-  'id, orderer_name, store_name, order_date, order_time, bank_name, account_number, account_holder, created_at';
+  'id, orderer_name, store_name, order_date, order_time, quiz_question, created_at';
+
+// 퀴즈로 계좌를 한 번 열람하면 이 페이지에 있는 동안은 다시 가리지 않음
+let revealedAccount = null;
 
 function getManagePin() {
   return document.getElementById('managePin').value.trim();
@@ -91,22 +95,71 @@ function render(order) {
     participantListEl.appendChild(row);
   });
 
+  const accountRow = revealedAccount
+    ? revealedAccount.account_number
+      ? `<div class="row"><span class="label">입금 계좌</span><span>${escapeHtml(
+          revealedAccount.bank_name || ''
+        )} ${escapeHtml(revealedAccount.account_number)} (${escapeHtml(
+          revealedAccount.account_holder || ''
+        )})</span></div>`
+      : `<div class="row"><span class="label">입금 계좌</span><span>아직 등록되지 않았어요</span></div>`
+    : '';
+
   settleSummaryEl.innerHTML = `
     <div class="settle-summary">
       <div class="row"><span class="label">참여자 합계</span><span>${formatWon(total)}</span></div>
-      ${
-        order.account_number
-          ? `<div class="row"><span class="label">입금 계좌</span><span>${escapeHtml(
-              order.bank_name || ''
-            )} ${escapeHtml(order.account_number)} (${escapeHtml(order.account_holder || '')})</span></div>`
-          : `<div class="row"><span class="label">입금 계좌</span><span>아직 등록되지 않았어요</span></div>`
-      }
+      ${accountRow}
     </div>
+    ${
+      revealedAccount
+        ? ''
+        : `
+    <div class="reveal-box">
+      <p class="empty-state" style="padding:8px 0 4px; text-align:left;">
+        🔒 계좌 정보는 퀴즈를 맞히면 볼 수 있어요.
+      </p>
+      <label for="revealAnswer">${escapeHtml(order.quiz_question || '퀴즈 질문')}</label>
+      <input type="text" id="revealAnswer" maxlength="30" placeholder="정답 입력" />
+      <p class="error-text" id="revealError"></p>
+      <button type="button" class="btn full secondary" id="revealBtn">계좌 확인</button>
+    </div>
+    `
+    }
   `;
 
-  document.getElementById('bankName').value = order.bank_name || '';
-  document.getElementById('accountHolder').value = order.account_holder || '';
-  document.getElementById('accountNumber').value = order.account_number || '';
+  if (!revealedAccount) {
+    document.getElementById('revealBtn').addEventListener('click', async () => {
+      const answer = document.getElementById('revealAnswer').value.trim();
+      const revealError = document.getElementById('revealError');
+      revealError.classList.remove('show');
+
+      if (!answer) {
+        revealError.textContent = '정답을 입력해주세요.';
+        revealError.classList.add('show');
+        return;
+      }
+
+      const { data, error } = await supabaseClient
+        .rpc('reveal_settlement', { p_order_id: Number(orderId), p_quiz_answer: answer })
+        .single();
+
+      if (error) {
+        revealError.textContent = error.message.includes('WRONG_ANSWER')
+          ? '정답이 아니에요.'
+          : '확인에 실패했어요.';
+        revealError.classList.add('show');
+        console.error(error);
+        return;
+      }
+
+      revealedAccount = data;
+      render(order);
+    });
+  }
+
+  document.getElementById('bankName').value = '';
+  document.getElementById('accountHolder').value = '';
+  document.getElementById('accountNumber').value = '';
 
   joinBtn.disabled = order.participants.length >= MAX_PARTICIPANTS;
   joinBtn.textContent =

@@ -16,9 +16,10 @@ let ordersByDate = {};
 
 const DOW = ['일', '월', '화', '수', '목', '금', '토'];
 
-// pin_hash는 절대 클라이언트로 내려받지 않도록 컬럼을 명시적으로 지정
+// pin_hash/quiz_answer_hash/계좌 정보는 절대 일반 조회로 내려받지 않도록
+// 컬럼을 명시적으로 지정 (계좌는 reveal_settlement() 함수로만 받아옴)
 const ORDER_COLUMNS =
-  'id, orderer_name, store_name, order_date, order_time, bank_name, account_number, account_holder, created_at';
+  'id, orderer_name, store_name, order_date, order_time, quiz_question, created_at';
 
 function pad(n) {
   return String(n).padStart(2, '0');
@@ -184,8 +185,10 @@ newOrderForm.addEventListener('submit', async (e) => {
   const orderDate = document.getElementById('orderDate').value;
   const orderTime = document.getElementById('orderTime').value;
   const pin = document.getElementById('orderPin').value.trim();
+  const quizQuestion = document.getElementById('quizQuestion').value.trim();
+  const quizAnswer = document.getElementById('quizAnswer').value.trim();
 
-  if (!ordererName || !storeName || !orderDate || !orderTime || !pin) {
+  if (!ordererName || !storeName || !orderDate || !orderTime || !pin || !quizQuestion || !quizAnswer) {
     newOrderError.textContent = '모든 항목을 입력해주세요.';
     newOrderError.classList.add('show');
     return;
@@ -203,6 +206,8 @@ newOrderForm.addEventListener('submit', async (e) => {
       p_order_date: orderDate,
       p_order_time: orderTime,
       p_pin: pin,
+      p_quiz_question: quizQuestion,
+      p_quiz_answer: quizAnswer,
     })
     .single();
 
