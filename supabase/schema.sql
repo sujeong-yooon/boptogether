@@ -2,7 +2,7 @@
 -- Supabase 대시보드 > SQL Editor 에서 이 파일 전체를 붙여넣고 Run 하세요.
 -- (이미 한 번 실행했더라도 그대로 다시 실행하면 됩니다 — 전부 안전하게 재실행 가능하도록 작성됨)
 
-create extension if not exists pgcrypto;
+create extension if not exists pgcrypto with schema extensions;
 
 create table if not exists orders (
   id bigint generated always as identity primary key,
@@ -71,7 +71,7 @@ returns table (
 )
 language plpgsql
 security definer
-set search_path = public, pg_temp
+set search_path = public, extensions, pg_temp
 as $$
 declare
   new_id bigint;
@@ -104,7 +104,7 @@ create or replace function update_settlement(
 returns void
 language plpgsql
 security definer
-set search_path = public, pg_temp
+set search_path = public, extensions, pg_temp
 as $$
 begin
   if not exists (
@@ -130,7 +130,7 @@ create or replace function update_participant_amount(
 returns void
 language plpgsql
 security definer
-set search_path = public, pg_temp
+set search_path = public, extensions, pg_temp
 as $$
 begin
   if p_amount is not null and p_amount < 0 then
@@ -156,7 +156,7 @@ create or replace function delete_order(
 returns void
 language plpgsql
 security definer
-set search_path = public, pg_temp
+set search_path = public, extensions, pg_temp
 as $$
 begin
   if not exists (
