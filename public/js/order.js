@@ -62,10 +62,11 @@ function render(order) {
   participantEmptyEl.style.display = order.participants.length ? 'none' : 'block';
 
   let total = 0;
-  order.participants.forEach((p) => {
+  order.participants.forEach((p, i) => {
     if (p.amount) total += p.amount;
     const row = document.createElement('div');
     row.className = 'participant-row';
+    row.style.setProperty('--i', i);
     row.innerHTML = `
       <span class="name">${escapeHtml(p.name)}</span>
       <span class="menu">${escapeHtml(p.menu)}</span>

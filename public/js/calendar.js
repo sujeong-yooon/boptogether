@@ -66,6 +66,7 @@ function renderGrid() {
     const dateStr = fmtDate(viewYear, viewMonth, d);
     const cell = document.createElement('div');
     cell.className = 'cal-cell' + (dateStr === todayStr ? ' today' : '');
+    cell.style.setProperty('--i', d - 1);
     cell.innerHTML = `<span>${d}</span>`;
 
     const dayOrders = ordersByDate[dateStr];
