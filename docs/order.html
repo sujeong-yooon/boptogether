@@ -4,11 +4,11 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>주문 상세 - 밥투게더</title>
-<link rel="stylesheet" href="/css/style.css" />
+<link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
 <div class="page">
-  <a href="/" class="back-link">← 캘린더로</a>
+  <a href="index.html" class="back-link">← 캘린더로</a>
 
   <div class="card order-header" id="orderHeader">
     <div class="store-name" id="storeName">불러오는 중...</div>
@@ -69,6 +69,8 @@
 
 <div class="toast" id="toast"></div>
 
-<script src="/js/order.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="js/supabase-config.js"></script>
+<script src="js/order.js"></script>
 </body>
 </html>

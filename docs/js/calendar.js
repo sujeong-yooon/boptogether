@@ -24,6 +24,10 @@ function fmtDate(y, m, d) {
   return `${y}-${pad(m)}-${pad(d)}`;
 }
 
+function participantCount(order) {
+  return order.participants && order.participants[0] ? order.participants[0].count : 0;
+}
+
 function showToast(msg) {
   toast.textContent = msg;
   toast.classList.add('show');
@@ -32,8 +36,25 @@ function showToast(msg) {
 
 async function loadMonth() {
   monthLabel.textContent = `${viewYear}년 ${viewMonth}월`;
-  const res = await fetch(`/api/orders?year=${viewYear}&month=${pad(viewMonth)}`);
-  const orders = await res.json();
+
+  const monthStart = fmtDate(viewYear, viewMonth, 1);
+  const nextMonthYear = viewMonth === 12 ? viewYear + 1 : viewYear;
+  const nextMonth = viewMonth === 12 ? 1 : viewMonth + 1;
+  const monthEnd = fmtDate(nextMonthYear, nextMonth, 1);
+
+  const { data: orders, error } = await supabaseClient
+    .from('orders')
+    .select('*, participants(count)')
+    .gte('order_date', monthStart)
+    .lt('order_date', monthEnd)
+    .order('order_date', { ascending: true });
+
+  if (error) {
+    showToast('불러오기에 실패했어요.');
+    console.error(error);
+    return;
+  }
+
   ordersByDate = {};
   for (const o of orders) {
     if (!ordersByDate[o.order_date]) ordersByDate[o.order_date] = [];
@@ -88,8 +109,17 @@ async function openDayModal(dateStr) {
   dayOrderList.innerHTML = '<p class="empty-state">불러오는 중...</p>';
   dayModalBackdrop.classList.remove('hidden');
 
-  const res = await fetch(`/api/orders/day?date=${dateStr}`);
-  const orders = await res.json();
+  const { data: orders, error } = await supabaseClient
+    .from('orders')
+    .select('*, participants(count)')
+    .eq('order_date', dateStr)
+    .order('order_time', { ascending: true });
+
+  if (error) {
+    dayOrderList.innerHTML = '<p class="empty-state">불러오기에 실패했어요.</p>';
+    console.error(error);
+    return;
+  }
 
   if (!orders.length) {
     dayOrderList.innerHTML = '<p class="empty-state">등록된 주문이 없어요. 새 주문을 등록해보세요!</p>';
@@ -103,12 +133,12 @@ async function openDayModal(dateStr) {
     item.innerHTML = `
       <div>
         <div class="store">${escapeHtml(o.store_name)}</div>
-        <div class="meta">${escapeHtml(o.orderer_name)} · ${o.order_time} · 참여 ${o.participant_count}/10</div>
+        <div class="meta">${escapeHtml(o.orderer_name)} · ${o.order_time} · 참여 ${participantCount(o)}/10</div>
       </div>
       <span>›</span>
     `;
     item.addEventListener('click', () => {
-      window.location.href = `/order.html?id=${o.id}`;
+      window.location.href = `order.html?id=${o.id}`;
     });
     dayOrderList.appendChild(item);
   });
@@ -145,27 +175,36 @@ newOrderForm.addEventListener('submit', async (e) => {
   e.preventDefault();
   newOrderError.classList.remove('show');
 
-  const payload = {
-    ordererName: document.getElementById('ordererName').value,
-    storeName: document.getElementById('storeName').value,
-    orderDate: document.getElementById('orderDate').value,
-    orderTime: document.getElementById('orderTime').value,
-  };
+  const ordererName = document.getElementById('ordererName').value.trim();
+  const storeName = document.getElementById('storeName').value.trim();
+  const orderDate = document.getElementById('orderDate').value;
+  const orderTime = document.getElementById('orderTime').value;
 
-  const res = await fetch('/api/orders', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
-  const data = await res.json();
-
-  if (!res.ok) {
-    newOrderError.textContent = data.error || '등록에 실패했어요.';
+  if (!ordererName || !storeName || !orderDate || !orderTime) {
+    newOrderError.textContent = '모든 항목을 입력해주세요.';
     newOrderError.classList.add('show');
     return;
   }
 
-  window.location.href = `/order.html?id=${data.id}`;
+  const { data, error } = await supabaseClient
+    .from('orders')
+    .insert({
+      orderer_name: ordererName,
+      store_name: storeName,
+      order_date: orderDate,
+      order_time: orderTime,
+    })
+    .select()
+    .single();
+
+  if (error) {
+    newOrderError.textContent = '등록에 실패했어요. (' + error.message + ')';
+    newOrderError.classList.add('show');
+    console.error(error);
+    return;
+  }
+
+  window.location.href = `order.html?id=${data.id}`;
 });
 
 document.getElementById('prevMonth').addEventListener('click', () => {

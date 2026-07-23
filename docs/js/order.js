@@ -38,12 +38,18 @@ if (!orderId) {
 }
 
 async function loadOrder() {
-  const res = await fetch(`/api/orders/${orderId}`);
-  if (!res.ok) {
+  const { data: order, error } = await supabaseClient
+    .from('orders')
+    .select('*, participants(*)')
+    .eq('id', orderId)
+    .order('id', { foreignTable: 'participants', ascending: true })
+    .single();
+
+  if (error || !order) {
     storeNameEl.textContent = '주문을 찾을 수 없어요.';
+    console.error(error);
     return;
   }
-  const order = await res.json();
   render(order);
 }
 
@@ -100,18 +106,19 @@ function render(order) {
   participantListEl.querySelectorAll('input[type="number"]').forEach((input) => {
     input.addEventListener('change', async () => {
       const pid = input.dataset.pid;
-      const res = await fetch(`/api/orders/${orderId}/participants/${pid}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ amount: input.value }),
-      });
-      const data = await res.json();
-      if (res.ok) {
-        render(data);
-        showToast('정산금액이 저장되었어요.');
-      } else {
-        showToast(data.error || '저장에 실패했어요.');
+      const amount = input.value === '' ? null : Number(input.value);
+      const { error } = await supabaseClient
+        .from('participants')
+        .update({ amount })
+        .eq('id', pid);
+
+      if (error) {
+        showToast('저장에 실패했어요.');
+        console.error(error);
+        return;
       }
+      await loadOrder();
+      showToast('정산금액이 저장되었어요.');
     });
   });
 
@@ -119,16 +126,15 @@ function render(order) {
     btn.addEventListener('click', async () => {
       if (!confirm('참여자를 삭제할까요?')) return;
       const pid = btn.dataset.remove;
-      const res = await fetch(`/api/orders/${orderId}/participants/${pid}`, {
-        method: 'DELETE',
-      });
-      const data = await res.json();
-      if (res.ok) {
-        render(data);
-        showToast('삭제되었어요.');
-      } else {
-        showToast(data.error || '삭제에 실패했어요.');
+      const { error } = await supabaseClient.from('participants').delete().eq('id', pid);
+
+      if (error) {
+        showToast('삭제에 실패했어요.');
+        console.error(error);
+        return;
       }
+      await loadOrder();
+      showToast('삭제되었어요.');
     });
   });
 }
@@ -137,48 +143,50 @@ joinForm.addEventListener('submit', async (e) => {
   e.preventDefault();
   joinError.classList.remove('show');
 
-  const payload = {
-    name: document.getElementById('joinName').value,
-    menu: document.getElementById('joinMenu').value,
-  };
+  const name = document.getElementById('joinName').value.trim();
+  const menu = document.getElementById('joinMenu').value.trim();
 
-  const res = await fetch(`/api/orders/${orderId}/participants`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
-  const data = await res.json();
-
-  if (!res.ok) {
-    joinError.textContent = data.error || '참여에 실패했어요.';
+  if (!name || !menu) {
+    joinError.textContent = '이름과 메뉴를 입력해주세요.';
     joinError.classList.add('show');
     return;
   }
 
+  const { error } = await supabaseClient
+    .from('participants')
+    .insert({ order_id: orderId, name, menu });
+
+  if (error) {
+    joinError.textContent = error.message.includes('MAX_PARTICIPANTS_REACHED')
+      ? '참여자는 최대 10명까지 가능해요.'
+      : '참여에 실패했어요.';
+    joinError.classList.add('show');
+    console.error(error);
+    return;
+  }
+
   joinForm.reset();
-  render(data);
+  await loadOrder();
   showToast('참여가 등록되었어요!');
 });
 
 settleForm.addEventListener('submit', async (e) => {
   e.preventDefault();
-  const payload = {
-    bankName: document.getElementById('bankName').value,
-    accountHolder: document.getElementById('accountHolder').value,
-    accountNumber: document.getElementById('accountNumber').value,
-  };
 
-  const res = await fetch(`/api/orders/${orderId}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
-  const data = await res.json();
+  const { error } = await supabaseClient
+    .from('orders')
+    .update({
+      bank_name: document.getElementById('bankName').value.trim() || null,
+      account_holder: document.getElementById('accountHolder').value.trim() || null,
+      account_number: document.getElementById('accountNumber').value.trim() || null,
+    })
+    .eq('id', orderId);
 
-  if (res.ok) {
-    render(data);
-    showToast('정산 계좌가 저장되었어요.');
-  } else {
-    showToast(data.error || '저장에 실패했어요.');
+  if (error) {
+    showToast('저장에 실패했어요.');
+    console.error(error);
+    return;
   }
+  await loadOrder();
+  showToast('정산 계좌가 저장되었어요.');
 });
