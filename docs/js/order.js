@@ -11,6 +11,7 @@ const joinError = document.getElementById('joinError');
 const joinBtn = document.getElementById('joinBtn');
 const settleForm = document.getElementById('settleForm');
 const settleSummaryEl = document.getElementById('settleSummary');
+const deleteOrderBtn = document.getElementById('deleteOrderBtn');
 const toast = document.getElementById('toast');
 
 const MAX_PARTICIPANTS = 10;
@@ -216,4 +217,28 @@ settleForm.addEventListener('submit', async (e) => {
   }
   await loadOrder();
   showToast('정산 계좌가 저장되었어요.');
+});
+
+deleteOrderBtn.addEventListener('click', async () => {
+  const pin = getManagePin();
+  if (!/^\d{4}$/.test(pin)) {
+    showToast('관리 비밀번호(4자리)를 먼저 입력해주세요.');
+    return;
+  }
+  if (!confirm('정말 이 주문을 삭제할까요? 참여자 정보도 모두 함께 사라져요.')) return;
+
+  const { error } = await supabaseClient.rpc('delete_order', {
+    p_order_id: Number(orderId),
+    p_pin: pin,
+  });
+
+  if (error) {
+    showToast(
+      error.message.includes('INVALID_PIN') ? '관리 비밀번호가 틀렸어요.' : '삭제에 실패했어요.'
+    );
+    console.error(error);
+    return;
+  }
+
+  window.location.href = 'index.html';
 });

@@ -149,9 +149,30 @@ begin
 end;
 $$;
 
+create or replace function delete_order(
+  p_order_id bigint,
+  p_pin text
+)
+returns void
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+begin
+  if not exists (
+    select 1 from orders where id = p_order_id and pin_hash is not null and pin_hash = crypt(p_pin, pin_hash)
+  ) then
+    raise exception 'INVALID_PIN';
+  end if;
+
+  delete from orders where id = p_order_id;
+end;
+$$;
+
 grant execute on function create_order(text, text, date, text, text) to anon, authenticated;
 grant execute on function update_settlement(bigint, text, text, text, text) to anon, authenticated;
 grant execute on function update_participant_amount(bigint, bigint, text, int) to anon, authenticated;
+grant execute on function delete_order(bigint, text) to anon, authenticated;
 
 -- ── RLS: 링크를 가진 누구나 조회/참여(insert)/참여자 삭제는 가능하지만,
 --    주문 생성과 정산 관련 수정은 위 함수를 통해서만 가능합니다.
