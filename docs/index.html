@@ -58,6 +58,17 @@
       <label for="orderTime">주문시간</label>
       <input type="time" id="orderTime" required value="12:00" />
 
+      <label for="orderPin">관리 비밀번호 (숫자 4자리)</label>
+      <input
+        type="password"
+        id="orderPin"
+        required
+        inputmode="numeric"
+        pattern="[0-9]{4}"
+        maxlength="4"
+        placeholder="정산 계좌/금액 수정할 때 필요해요"
+      />
+
       <p class="error-text" id="newOrderError"></p>
       <button type="submit" class="btn full">등록하기</button>
     </form>

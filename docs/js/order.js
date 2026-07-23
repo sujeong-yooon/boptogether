@@ -15,6 +15,14 @@ const toast = document.getElementById('toast');
 
 const MAX_PARTICIPANTS = 10;
 
+// pin_hash는 절대 클라이언트로 내려받지 않도록 컬럼을 명시적으로 지정
+const ORDER_COLUMNS =
+  'id, orderer_name, store_name, order_date, order_time, bank_name, account_number, account_holder, created_at';
+
+function getManagePin() {
+  return document.getElementById('managePin').value.trim();
+}
+
 function showToast(msg) {
   toast.textContent = msg;
   toast.classList.add('show');
@@ -40,7 +48,7 @@ if (!orderId) {
 async function loadOrder() {
   const { data: order, error } = await supabaseClient
     .from('orders')
-    .select('*, participants(*)')
+    .select(`${ORDER_COLUMNS}, participants(*)`)
     .eq('id', orderId)
     .order('id', { foreignTable: 'participants', ascending: true })
     .single();
@@ -104,16 +112,28 @@ function render(order) {
     order.participants.length >= MAX_PARTICIPANTS ? '참여 마감 (10/10)' : '참여하기';
 
   participantListEl.querySelectorAll('input[type="number"]').forEach((input) => {
+    const prevValue = input.value;
     input.addEventListener('change', async () => {
+      const pin = getManagePin();
+      if (!/^\d{4}$/.test(pin)) {
+        showToast('아래 관리 비밀번호(4자리)를 먼저 입력해주세요.');
+        input.value = prevValue;
+        return;
+      }
+
       const pid = input.dataset.pid;
       const amount = input.value === '' ? null : Number(input.value);
-      const { error } = await supabaseClient
-        .from('participants')
-        .update({ amount })
-        .eq('id', pid);
+      const { error } = await supabaseClient.rpc('update_participant_amount', {
+        p_participant_id: Number(pid),
+        p_order_id: Number(orderId),
+        p_pin: pin,
+        p_amount: amount,
+      });
 
       if (error) {
-        showToast('저장에 실패했어요.');
+        showToast(
+          error.message.includes('INVALID_PIN') ? '관리 비밀번호가 틀렸어요.' : '저장에 실패했어요.'
+        );
         console.error(error);
         return;
       }
@@ -173,17 +193,24 @@ joinForm.addEventListener('submit', async (e) => {
 settleForm.addEventListener('submit', async (e) => {
   e.preventDefault();
 
-  const { error } = await supabaseClient
-    .from('orders')
-    .update({
-      bank_name: document.getElementById('bankName').value.trim() || null,
-      account_holder: document.getElementById('accountHolder').value.trim() || null,
-      account_number: document.getElementById('accountNumber').value.trim() || null,
-    })
-    .eq('id', orderId);
+  const pin = getManagePin();
+  if (!/^\d{4}$/.test(pin)) {
+    showToast('관리 비밀번호(4자리)를 먼저 입력해주세요.');
+    return;
+  }
+
+  const { error } = await supabaseClient.rpc('update_settlement', {
+    p_order_id: Number(orderId),
+    p_pin: pin,
+    p_bank_name: document.getElementById('bankName').value.trim(),
+    p_account_holder: document.getElementById('accountHolder').value.trim(),
+    p_account_number: document.getElementById('accountNumber').value.trim(),
+  });
 
   if (error) {
-    showToast('저장에 실패했어요.');
+    showToast(
+      error.message.includes('INVALID_PIN') ? '관리 비밀번호가 틀렸어요.' : '저장에 실패했어요.'
+    );
     console.error(error);
     return;
   }

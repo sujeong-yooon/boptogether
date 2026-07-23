@@ -16,6 +16,10 @@ let ordersByDate = {};
 
 const DOW = ['일', '월', '화', '수', '목', '금', '토'];
 
+// pin_hash는 절대 클라이언트로 내려받지 않도록 컬럼을 명시적으로 지정
+const ORDER_COLUMNS =
+  'id, orderer_name, store_name, order_date, order_time, bank_name, account_number, account_holder, created_at';
+
 function pad(n) {
   return String(n).padStart(2, '0');
 }
@@ -44,7 +48,7 @@ async function loadMonth() {
 
   const { data: orders, error } = await supabaseClient
     .from('orders')
-    .select('*, participants(count)')
+    .select(`${ORDER_COLUMNS}, participants(count)`)
     .gte('order_date', monthStart)
     .lt('order_date', monthEnd)
     .order('order_date', { ascending: true });
@@ -111,7 +115,7 @@ async function openDayModal(dateStr) {
 
   const { data: orders, error } = await supabaseClient
     .from('orders')
-    .select('*, participants(count)')
+    .select(`${ORDER_COLUMNS}, participants(count)`)
     .eq('order_date', dateStr)
     .order('order_time', { ascending: true });
 
@@ -179,22 +183,27 @@ newOrderForm.addEventListener('submit', async (e) => {
   const storeName = document.getElementById('storeName').value.trim();
   const orderDate = document.getElementById('orderDate').value;
   const orderTime = document.getElementById('orderTime').value;
+  const pin = document.getElementById('orderPin').value.trim();
 
-  if (!ordererName || !storeName || !orderDate || !orderTime) {
+  if (!ordererName || !storeName || !orderDate || !orderTime || !pin) {
     newOrderError.textContent = '모든 항목을 입력해주세요.';
+    newOrderError.classList.add('show');
+    return;
+  }
+  if (!/^\d{4}$/.test(pin)) {
+    newOrderError.textContent = '관리 비밀번호는 숫자 4자리로 입력해주세요.';
     newOrderError.classList.add('show');
     return;
   }
 
   const { data, error } = await supabaseClient
-    .from('orders')
-    .insert({
-      orderer_name: ordererName,
-      store_name: storeName,
-      order_date: orderDate,
-      order_time: orderTime,
+    .rpc('create_order', {
+      p_orderer_name: ordererName,
+      p_store_name: storeName,
+      p_order_date: orderDate,
+      p_order_time: orderTime,
+      p_pin: pin,
     })
-    .select()
     .single();
 
   if (error) {
