@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>주문 상세 - 밥투게더</title>
+<link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+<div class="page">
+  <a href="/" class="back-link">← 캘린더로</a>
+
+  <div class="card order-header" id="orderHeader">
+    <div class="store-name" id="storeName">불러오는 중...</div>
+    <div class="info-row" id="infoRow"></div>
+  </div>
+
+  <div class="card">
+    <div style="display:flex; justify-content:space-between; align-items:center;">
+      <h2>참여자</h2>
+      <span class="count-badge" id="countBadge"></span>
+    </div>
+    <div class="participant-head">
+      <span>이름</span>
+      <span>메뉴</span>
+      <span>정산금액</span>
+      <span></span>
+    </div>
+    <div id="participantList"></div>
+    <p class="empty-state" id="participantEmpty" style="display:none;">
+      아직 참여자가 없어요. 첫 번째로 참여해보세요!
+    </p>
+
+    <form id="joinForm">
+      <label for="joinName">내 이름</label>
+      <input type="text" id="joinName" required maxlength="20" placeholder="예: 이지은" />
+      <label for="joinMenu">메뉴명</label>
+      <input type="text" id="joinMenu" required maxlength="30" placeholder="예: 제육볶음" />
+      <p class="error-text" id="joinError"></p>
+      <button type="submit" class="btn full" id="joinBtn">참여하기</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>정산 방식</h2>
+    <p class="empty-state" style="padding:4px 0 10px; text-align:left;">
+      주문자만 정산 계좌를 등록/수정하고, 참여자별 금액을 입력할 수 있어요.
+    </p>
+    <div id="settleSummary"></div>
+    <form id="settleForm">
+      <div class="settle-grid">
+        <div>
+          <label for="bankName">은행명</label>
+          <input type="text" id="bankName" maxlength="20" placeholder="예: 카카오뱅크" />
+        </div>
+        <div>
+          <label for="accountHolder">예금주</label>
+          <input type="text" id="accountHolder" maxlength="20" placeholder="예: 김수정" />
+        </div>
+        <div class="full">
+          <label for="accountNumber">계좌번호</label>
+          <input type="text" id="accountNumber" maxlength="30" placeholder="예: 3333-01-1234567" />
+        </div>
+      </div>
+      <button type="submit" class="btn full secondary">정산 계좌 저장</button>
+    </form>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="/js/order.js"></script>
+</body>
+</html>

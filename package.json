@@ -1,0 +1,14 @@
+{
+  "name": "boptogether",
+  "version": "1.0.0",
+  "description": "함께 주문하고 정산하는 캘린더 웹앱",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.3.0",
+    "express": "^4.19.2"
+  }
+}

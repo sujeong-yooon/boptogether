@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>밥투게더 - 함께 주문하고 정산해요</title>
+<link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+<div class="page">
+  <div class="brand">
+    <span class="emoji">🍱</span>
+    <h1>밥투게더</h1>
+    <span class="tag">최대 10명 참여</span>
+  </div>
+
+  <div class="card">
+    <div class="cal-nav">
+      <button id="prevMonth" aria-label="이전 달">◀</button>
+      <div class="month-label" id="monthLabel"></div>
+      <button id="nextMonth" aria-label="다음 달">▶</button>
+    </div>
+    <div class="cal-grid" id="calGrid"></div>
+  </div>
+
+  <p class="empty-state">날짜를 눌러 주문을 등록하거나 참여할 수 있어요.</p>
+</div>
+
+<!-- 날짜 클릭 시: 해당 날짜의 주문 목록 -->
+<div class="modal-backdrop hidden" id="dayModalBackdrop">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="dayModalTitle">주문 목록</h2>
+      <button class="close" id="dayModalClose">&times;</button>
+    </div>
+    <div id="dayOrderList"></div>
+    <button class="btn full" id="openNewOrderBtn">+ 새 주문 등록</button>
+  </div>
+</div>
+
+<!-- 새 주문 등록 폼 -->
+<div class="modal-backdrop hidden" id="newOrderBackdrop">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>새 주문 등록</h2>
+      <button class="close" id="newOrderClose">&times;</button>
+    </div>
+    <form id="newOrderForm">
+      <label for="ordererName">주문자이름</label>
+      <input type="text" id="ordererName" required maxlength="20" placeholder="예: 김수정" />
+
+      <label for="storeName">매장명</label>
+      <input type="text" id="storeName" required maxlength="30" placeholder="예: 옆집 김밥" />
+
+      <label for="orderDate">주문날짜</label>
+      <input type="date" id="orderDate" required />
+
+      <label for="orderTime">주문시간</label>
+      <input type="time" id="orderTime" required value="12:00" />
+
+      <p class="error-text" id="newOrderError"></p>
+      <button type="submit" class="btn full">등록하기</button>
+    </form>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="/js/calendar.js"></script>
+</body>
+</html>
