@@ -11,78 +11,97 @@
   <a href="index.html" class="back-link">← 캘린더로</a>
 
   <div class="card order-header" id="orderHeader">
-    <div class="store-name" id="storeName">불러오는 중...</div>
+    <div class="header-top">
+      <div class="store-name" id="storeName">불러오는 중...</div>
+      <button type="button" class="btn secondary small" id="shareBtn" hidden>링크 복사</button>
+    </div>
     <div class="info-row" id="infoRow"></div>
+    <div class="status-bar" id="orderStatus" role="status"></div>
   </div>
 
-  <div class="card">
-    <div style="display:flex; justify-content:space-between; align-items:center;">
-      <h2>참여자</h2>
-      <span class="count-badge" id="countBadge"></span>
-    </div>
-    <div class="participant-head">
-      <span>이름</span>
-      <span>메뉴</span>
-      <span>정산금액</span>
-      <span></span>
-    </div>
-    <div id="participantList"></div>
-    <p class="empty-state" id="participantEmpty" style="display:none;">
-      아직 참여자가 없어요. 첫 번째로 참여해보세요!
-    </p>
-
-    <form id="joinForm">
-      <label for="joinName">내 이름</label>
-      <input type="text" id="joinName" required maxlength="20" placeholder="예: 이지은" />
-      <label for="joinMenu">메뉴명</label>
-      <input type="text" id="joinMenu" required maxlength="30" placeholder="예: 제육볶음" />
-      <p class="error-text" id="joinError"></p>
-      <button type="submit" class="btn full" id="joinBtn">참여하기</button>
-    </form>
+  <div class="card created-note" id="createdNote" hidden>
+    <strong>주문이 등록됐어요.</strong>
+    <p>위의 <b>링크 복사</b>로 주소를 공유하면 함께 먹을 사람들이 이름과 메뉴를 남길 수 있어요.
+    아래 정산 계좌도 미리 등록해두세요.</p>
   </div>
 
-  <div class="card">
-    <h2>정산 방식</h2>
-    <p class="empty-state" style="padding:4px 0 10px; text-align:left;">
-      계좌 정보는 아래 퀴즈를 맞혀야 볼 수 있어요. 계좌 수정/삭제, 참여자 금액
-      입력은 주문자만 아는 관리 비밀번호가 있어야 가능해요.
-    </p>
-    <label for="managePin">관리 비밀번호 (주문 등록 시 설정한 숫자 4자리, 주문자 전용)</label>
-    <input
-      type="password"
-      id="managePin"
-      inputmode="numeric"
-      pattern="[0-9]{4}"
-      maxlength="4"
-      placeholder="관리 비밀번호 4자리"
-    />
-    <div id="settleSummary"></div>
-    <form id="settleForm">
-      <div class="settle-grid">
-        <div>
-          <label for="bankName">은행명</label>
-          <input type="text" id="bankName" maxlength="20" placeholder="예: 카카오뱅크" />
-        </div>
-        <div>
-          <label for="accountHolder">예금주</label>
-          <input type="text" id="accountHolder" maxlength="20" placeholder="예: 김수정" />
-        </div>
-        <div class="full">
-          <label for="accountNumber">계좌번호</label>
-          <input type="text" id="accountNumber" maxlength="30" placeholder="예: 3333-01-1234567" />
-        </div>
+  <div id="orderBody" hidden>
+    <div class="card">
+      <div class="section-head">
+        <h2>참여자</h2>
+        <span class="count-badge" id="countBadge"></span>
       </div>
-      <button type="submit" class="btn full secondary">정산 계좌 저장</button>
-    </form>
-  </div>
+      <div class="participant-head">
+        <span>이름</span>
+        <span>메뉴</span>
+        <span>정산금액</span>
+        <span></span>
+      </div>
+      <div id="participantList"></div>
+      <p class="empty-state" id="participantEmpty" hidden>
+        아직 참여자가 없어요. 첫 번째로 참여해보세요!
+      </p>
 
-  <div class="card">
-    <h2>주문 삭제</h2>
-    <p class="empty-state" style="padding:4px 0 10px; text-align:left;">
-      주문 전체를 삭제하면 참여자 정보도 모두 함께 사라져요. 위 관리 비밀번호를
-      입력한 상태에서만 삭제할 수 있어요.
-    </p>
-    <button type="button" class="btn full danger" id="deleteOrderBtn">주문 전체 삭제</button>
+      <form id="joinForm">
+        <label for="joinName">내 이름</label>
+        <input type="text" id="joinName" required maxlength="20" placeholder="예: 이지은" />
+        <label for="joinMenu">메뉴명</label>
+        <input type="text" id="joinMenu" required maxlength="30" placeholder="예: 제육볶음" />
+        <p class="error-text" id="joinError"></p>
+        <button type="submit" class="btn full" id="joinBtn">참여하기</button>
+      </form>
+    </div>
+
+    <div class="card">
+      <h2>정산</h2>
+      <div id="settleSummary"></div>
+    </div>
+
+    <div class="card">
+      <h2>주문자 관리</h2>
+      <p class="hint">
+        참여자 금액 입력, 정산 계좌 등록, 주문 삭제는 주문 등록 때 정한 관리 비밀번호가 있어야 해요.
+      </p>
+      <label for="managePin">관리 비밀번호 (숫자 4자리)</label>
+      <input
+        type="password"
+        id="managePin"
+        inputmode="numeric"
+        pattern="[0-9]{4}"
+        maxlength="4"
+        autocomplete="off"
+        placeholder="관리 비밀번호 4자리"
+      />
+      <form id="settleForm">
+        <div class="settle-grid">
+          <div>
+            <label for="bankName">은행명</label>
+            <input type="text" id="bankName" maxlength="20" placeholder="예: 카카오뱅크" />
+          </div>
+          <div>
+            <label for="accountHolder">예금주</label>
+            <input type="text" id="accountHolder" maxlength="20" placeholder="예: 김수정" />
+          </div>
+          <div class="full">
+            <label for="accountNumber">계좌번호</label>
+            <input type="text" id="accountNumber" maxlength="30" inputmode="numeric" placeholder="예: 3333-01-1234567" />
+          </div>
+        </div>
+        <button type="submit" class="btn full secondary" id="settleBtn">정산 계좌 저장</button>
+      </form>
+      <button type="button" class="btn full danger" id="deleteOrderBtn">주문 전체 삭제</button>
+    </div>
+  </div>
+</div>
+
+<!-- 확인 창 (브라우저 기본 confirm 대신) -->
+<div class="modal-backdrop center hidden" id="confirmBackdrop">
+  <div class="modal dialog" role="alertdialog" aria-modal="true" aria-labelledby="confirmMsg">
+    <p id="confirmMsg"></p>
+    <div class="dialog-actions">
+      <button type="button" class="btn secondary" id="confirmCancel">취소</button>
+      <button type="button" class="btn danger-solid" id="confirmOk">삭제</button>
+    </div>
   </div>
 </div>
 

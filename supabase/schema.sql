@@ -252,3 +252,14 @@ create policy "participants_select" on participants for select using (true);
 create policy "participants_insert" on participants for insert with check (true);
 create policy "participants_delete" on participants for delete using (true);
 -- update 정책도 만들지 않습니다: 금액 수정은 update_participant_amount() 함수로만 가능
+
+-- ── 컬럼 단위 조회 권한
+--    RLS의 orders_select(using true)만으로는 "행"만 걸러질 뿐 "컬럼"은 막히지 않아서,
+--    공개(anon) 키로 REST API를 직접 호출하면 account_number, pin_hash,
+--    quiz_answer_hash까지 그대로 내려받을 수 있었습니다. 4자리 PIN은 해시만 있으면
+--    몇 초 안에 역산되므로, 공개해도 되는 컬럼만 조회를 허용합니다.
+--    (계좌는 reveal_settlement(), 수정은 SECURITY DEFINER 함수들이 테이블 소유자
+--     권한으로 처리하므로 이 제한의 영향을 받지 않습니다)
+revoke select on orders from anon, authenticated;
+grant select (id, orderer_name, store_name, order_date, order_time, quiz_question, created_at)
+  on orders to anon, authenticated;

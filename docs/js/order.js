@@ -1,8 +1,13 @@
 const params = new URLSearchParams(window.location.search);
-const orderId = params.get('id');
+const orderIdRaw = params.get('id');
+const orderId = /^\d+$/.test(orderIdRaw || '') ? Number(orderIdRaw) : null;
 
 const storeNameEl = document.getElementById('storeName');
 const infoRowEl = document.getElementById('infoRow');
+const orderStatusEl = document.getElementById('orderStatus');
+const orderBodyEl = document.getElementById('orderBody');
+const createdNoteEl = document.getElementById('createdNote');
+const shareBtn = document.getElementById('shareBtn');
 const participantListEl = document.getElementById('participantList');
 const participantEmptyEl = document.getElementById('participantEmpty');
 const countBadgeEl = document.getElementById('countBadge');
@@ -10,207 +15,347 @@ const joinForm = document.getElementById('joinForm');
 const joinError = document.getElementById('joinError');
 const joinBtn = document.getElementById('joinBtn');
 const settleForm = document.getElementById('settleForm');
+const settleBtn = document.getElementById('settleBtn');
 const settleSummaryEl = document.getElementById('settleSummary');
 const deleteOrderBtn = document.getElementById('deleteOrderBtn');
-const toast = document.getElementById('toast');
+const managePinEl = document.getElementById('managePin');
 
 const MAX_PARTICIPANTS = 10;
+const PIN_KEY = `bt:pin:${orderId}`;
 
 // pin_hash/quiz_answer_hash/계좌 정보는 절대 일반 조회로 내려받지 않도록
 // 컬럼을 명시적으로 지정 (계좌는 reveal_settlement() 함수로 퀴즈를 맞혀야만 받아옴)
 const ORDER_COLUMNS =
   'id, orderer_name, store_name, order_date, order_time, quiz_question, created_at';
 
+let currentOrder = null;
 // 퀴즈로 계좌를 한 번 열람하면 이 페이지에 있는 동안은 다시 가리지 않음
 let revealedAccount = null;
 
-function getManagePin() {
-  return document.getElementById('managePin').value.trim();
-}
-
-function showToast(msg) {
-  toast.textContent = msg;
-  toast.classList.add('show');
-  setTimeout(() => toast.classList.remove('show'), 2000);
-}
-
-function escapeHtml(str) {
-  const div = document.createElement('div');
-  div.textContent = str;
-  return div.innerHTML;
+function shareUrl() {
+  return `${window.location.origin}${window.location.pathname}?id=${orderId}`;
 }
 
 function formatWon(n) {
   return `${Number(n).toLocaleString('ko-KR')}원`;
 }
 
-if (!orderId) {
-  storeNameEl.textContent = '잘못된 접근입니다.';
-} else {
-  loadOrder();
+function getManagePin() {
+  return managePinEl.value.trim();
+}
+
+// 관리 비밀번호가 필요한 동작 전에 호출. 형식이 틀리면 안내하고 입력칸으로 보낸다.
+function requirePin() {
+  const pin = getManagePin();
+  if (/^\d{4}$/.test(pin)) return pin;
+  showToast('주문자 관리의 관리 비밀번호(4자리)를 먼저 입력해주세요.');
+  managePinEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  managePinEl.focus({ preventScroll: true });
+  return null;
+}
+
+function pinErrorMessage(error, fallback) {
+  if (error && error.message && error.message.includes('INVALID_PIN')) {
+    return '관리 비밀번호가 틀렸어요.';
+  }
+  if (error && error.message === 'TIMEOUT') return connectionErrorMessage(error);
+  return fallback;
+}
+
+function rememberPin(pin) {
+  safeStore.set('sessionStorage', PIN_KEY, pin);
+}
+
+function setOrderStatus(msg, { retry = false } = {}) {
+  orderStatusEl.className = `status-bar ${msg ? 'show error' : ''}`;
+  orderStatusEl.innerHTML = msg ? `<span>${escapeHtml(msg)}</span>` : '';
+  if (retry) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'link-btn';
+    btn.textContent = '다시 시도';
+    btn.addEventListener('click', loadOrder);
+    orderStatusEl.appendChild(btn);
+  }
+}
+
+// ── 확인 창 (브라우저 기본 confirm 대신 앱 스타일 모달)
+const confirmBackdrop = document.getElementById('confirmBackdrop');
+function askConfirm(message, okLabel = '삭제') {
+  return new Promise((resolve) => {
+    document.getElementById('confirmMsg').textContent = message;
+    const okBtn = document.getElementById('confirmOk');
+    const cancelBtn = document.getElementById('confirmCancel');
+    okBtn.textContent = okLabel;
+    confirmBackdrop.classList.remove('hidden');
+    document.body.classList.add('modal-open');
+    okBtn.focus();
+
+    const done = (result) => {
+      confirmBackdrop.classList.add('hidden');
+      document.body.classList.remove('modal-open');
+      okBtn.removeEventListener('click', onOk);
+      cancelBtn.removeEventListener('click', onCancel);
+      confirmBackdrop.removeEventListener('click', onBackdrop);
+      document.removeEventListener('keydown', onKey);
+      resolve(result);
+    };
+    const onOk = () => done(true);
+    const onCancel = () => done(false);
+    const onBackdrop = (e) => {
+      if (e.target === confirmBackdrop) done(false);
+    };
+    const onKey = (e) => {
+      if (e.key === 'Escape') done(false);
+    };
+    okBtn.addEventListener('click', onOk);
+    cancelBtn.addEventListener('click', onCancel);
+    confirmBackdrop.addEventListener('click', onBackdrop);
+    document.addEventListener('keydown', onKey);
+  });
 }
 
 async function loadOrder() {
-  const { data: order, error } = await supabaseClient
-    .from('orders')
-    .select(`${ORDER_COLUMNS}, participants(*)`)
-    .eq('id', orderId)
-    .order('id', { foreignTable: 'participants', ascending: true })
-    .single();
-
-  if (error || !order) {
-    storeNameEl.textContent = '주문을 찾을 수 없어요.';
-    console.error(error);
+  if (!supabaseClient) {
+    setOrderStatus(connectionErrorMessage());
+    storeNameEl.textContent = '밥투게더';
     return;
   }
-  render(order);
+
+  const { data: order, error } = await withTimeout(
+    supabaseClient
+      .from('orders')
+      .select(`${ORDER_COLUMNS}, participants(id, name, menu, amount, created_at)`)
+      .eq('id', orderId)
+      .order('id', { referencedTable: 'participants', ascending: true })
+      .maybeSingle()
+  );
+
+  if (error) {
+    console.error(error);
+    // 이미 화면에 주문이 떠 있으면 그대로 두고 안내만 한다.
+    if (!currentOrder) storeNameEl.textContent = '주문을 불러오지 못했어요';
+    setOrderStatus(connectionErrorMessage(error), { retry: true });
+    return;
+  }
+  if (!order) {
+    storeNameEl.textContent = '주문을 찾을 수 없어요';
+    infoRowEl.innerHTML = '<span>삭제된 주문이거나 잘못된 링크예요.</span>';
+    orderBodyEl.hidden = true;
+    shareBtn.hidden = true;
+    createdNoteEl.hidden = true;
+    return;
+  }
+
+  setOrderStatus('');
+  currentOrder = order;
+  render();
 }
 
-function render(order) {
+function render() {
+  const order = currentOrder;
   document.title = `${order.store_name} - 밥투게더`;
   storeNameEl.textContent = order.store_name;
   infoRowEl.innerHTML = `
     <span>👤 주문자 ${escapeHtml(order.orderer_name)}</span>
-    <span>📅 ${order.order_date}</span>
-    <span>🕒 ${order.order_time}</span>
+    <span>📅 ${escapeHtml(formatKoreanDate(order.order_date))}</span>
+    <span>🕒 ${escapeHtml(formatKoreanTime(order.order_time))}</span>
   `;
+  shareBtn.hidden = false;
+  orderBodyEl.hidden = false;
 
-  countBadgeEl.textContent = `${order.participants.length}/${MAX_PARTICIPANTS}명`;
+  renderParticipants();
+  renderSettlement();
+}
 
+function renderParticipants() {
+  const participants = currentOrder.participants;
+  const full = participants.length >= MAX_PARTICIPANTS;
+  countBadgeEl.textContent = `${participants.length}/${MAX_PARTICIPANTS}명`;
+  participantEmptyEl.hidden = participants.length > 0;
   participantListEl.innerHTML = '';
-  participantEmptyEl.style.display = order.participants.length ? 'none' : 'block';
 
-  let total = 0;
-  order.participants.forEach((p, i) => {
-    if (p.amount) total += p.amount;
+  participants.forEach((p, i) => {
     const row = document.createElement('div');
     row.className = 'participant-row';
     row.style.setProperty('--i', i);
     row.innerHTML = `
       <span class="name">${escapeHtml(p.name)}</span>
       <span class="menu">${escapeHtml(p.menu)}</span>
-      <input type="number" min="0" step="100" placeholder="금액" value="${p.amount ?? ''}" data-pid="${p.id}" />
-      <button class="remove-btn" data-remove="${p.id}" title="삭제">✕</button>
+      <input type="number" inputmode="numeric" min="0" step="100" placeholder="금액"
+        value="${p.amount ?? ''}" aria-label="${escapeHtml(p.name)} 정산금액" />
+      <button type="button" class="remove-btn" title="참여 취소" aria-label="${escapeHtml(p.name)} 참여 취소">✕</button>
     `;
+    const input = row.querySelector('input');
+    input.addEventListener('change', () => saveAmount(p, input));
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') input.blur();
+    });
+    row.querySelector('.remove-btn').addEventListener('click', () => removeParticipant(p));
     participantListEl.appendChild(row);
   });
 
-  const accountRow = revealedAccount
-    ? revealedAccount.account_number
-      ? `<div class="row"><span class="label">입금 계좌</span><span>${escapeHtml(
-          revealedAccount.bank_name || ''
-        )} ${escapeHtml(revealedAccount.account_number)} (${escapeHtml(
-          revealedAccount.account_holder || ''
-        )})</span></div>`
-      : `<div class="row"><span class="label">입금 계좌</span><span>아직 등록되지 않았어요</span></div>`
-    : '';
+  joinBtn.disabled = full;
+  joinBtn.textContent = full ? `참여 마감 (${MAX_PARTICIPANTS}/${MAX_PARTICIPANTS})` : '참여하기';
+  joinForm.querySelectorAll('input').forEach((el) => (el.disabled = full));
+}
+
+function settlementTotals() {
+  const participants = currentOrder.participants;
+  const total = participants.reduce((sum, p) => sum + (p.amount || 0), 0);
+  const missing = participants.filter((p) => p.amount == null).length;
+  return { total, missing };
+}
+
+function renderSettlement() {
+  const order = currentOrder;
+  const { total, missing } = settlementTotals();
+
+  let accountHtml;
+  if (revealedAccount) {
+    accountHtml = revealedAccount.account_number
+      ? `<div class="row account">
+           <span class="label">입금 계좌</span>
+           <span class="value">${escapeHtml(revealedAccount.bank_name || '')} ${escapeHtml(
+             revealedAccount.account_number
+           )}<br /><small>예금주 ${escapeHtml(revealedAccount.account_holder || '-')}</small></span>
+         </div>
+         <button type="button" class="btn full secondary" id="copyAccountBtn">계좌번호 복사</button>`
+      : `<div class="row"><span class="label">입금 계좌</span><span>아직 등록되지 않았어요</span></div>`;
+  } else {
+    accountHtml = `
+      <div class="reveal-box">
+        <p class="hint">🔒 계좌 정보는 주문자가 낸 퀴즈를 맞히면 볼 수 있어요.</p>
+        <label for="revealAnswer">${escapeHtml(order.quiz_question || '퀴즈 질문')}</label>
+        <input type="text" id="revealAnswer" maxlength="30" placeholder="정답 입력" autocomplete="off" />
+        <p class="error-text" id="revealError"></p>
+        <button type="button" class="btn full secondary" id="revealBtn">계좌 확인</button>
+      </div>`;
+  }
 
   settleSummaryEl.innerHTML = `
     <div class="settle-summary">
-      <div class="row"><span class="label">참여자 합계</span><span>${formatWon(total)}</span></div>
-      ${accountRow}
+      <div class="row"><span class="label">참여자 합계</span><strong id="totalAmount">${formatWon(total)}</strong></div>
+      <div class="row sub" id="missingRow" ${missing ? '' : 'hidden'}>
+        <span class="label">금액 미입력</span><span id="missingCount">${missing}명</span>
+      </div>
     </div>
-    ${
-      revealedAccount
-        ? ''
-        : `
-    <div class="reveal-box">
-      <p class="empty-state" style="padding:8px 0 4px; text-align:left;">
-        🔒 계좌 정보는 퀴즈를 맞히면 볼 수 있어요.
-      </p>
-      <label for="revealAnswer">${escapeHtml(order.quiz_question || '퀴즈 질문')}</label>
-      <input type="text" id="revealAnswer" maxlength="30" placeholder="정답 입력" />
-      <p class="error-text" id="revealError"></p>
-      <button type="button" class="btn full secondary" id="revealBtn">계좌 확인</button>
-    </div>
-    `
-    }
+    ${accountHtml}
   `;
 
-  if (!revealedAccount) {
-    document.getElementById('revealBtn').addEventListener('click', async () => {
-      const answer = document.getElementById('revealAnswer').value.trim();
-      const revealError = document.getElementById('revealError');
-      revealError.classList.remove('show');
-
-      if (!answer) {
-        revealError.textContent = '정답을 입력해주세요.';
-        revealError.classList.add('show');
-        return;
-      }
-
-      const { data, error } = await supabaseClient
-        .rpc('reveal_settlement', { p_order_id: Number(orderId), p_quiz_answer: answer })
-        .single();
-
-      if (error) {
-        revealError.textContent = error.message.includes('WRONG_ANSWER')
-          ? '정답이 아니에요.'
-          : '확인에 실패했어요.';
-        revealError.classList.add('show');
-        console.error(error);
-        return;
-      }
-
-      revealedAccount = data;
-      render(order);
+  const copyBtn = document.getElementById('copyAccountBtn');
+  if (copyBtn) {
+    copyBtn.addEventListener('click', async () => {
+      const ok = await copyText(revealedAccount.account_number.replace(/[^\d]/g, ''));
+      showToast(ok ? '계좌번호를 복사했어요.' : '복사에 실패했어요. 길게 눌러 복사해주세요.');
     });
   }
 
-  document.getElementById('bankName').value = '';
-  document.getElementById('accountHolder').value = '';
-  document.getElementById('accountNumber').value = '';
-
-  joinBtn.disabled = order.participants.length >= MAX_PARTICIPANTS;
-  joinBtn.textContent =
-    order.participants.length >= MAX_PARTICIPANTS ? '참여 마감 (10/10)' : '참여하기';
-
-  participantListEl.querySelectorAll('input[type="number"]').forEach((input) => {
-    const prevValue = input.value;
-    input.addEventListener('change', async () => {
-      const pin = getManagePin();
-      if (!/^\d{4}$/.test(pin)) {
-        showToast('아래 관리 비밀번호(4자리)를 먼저 입력해주세요.');
-        input.value = prevValue;
-        return;
-      }
-
-      const pid = input.dataset.pid;
-      const amount = input.value === '' ? null : Number(input.value);
-      const { error } = await supabaseClient.rpc('update_participant_amount', {
-        p_participant_id: Number(pid),
-        p_order_id: Number(orderId),
-        p_pin: pin,
-        p_amount: amount,
-      });
-
-      if (error) {
-        showToast(
-          error.message.includes('INVALID_PIN') ? '관리 비밀번호가 틀렸어요.' : '저장에 실패했어요.'
-        );
-        console.error(error);
-        return;
-      }
-      await loadOrder();
-      showToast('정산금액이 저장되었어요.');
+  const revealBtn = document.getElementById('revealBtn');
+  if (revealBtn) {
+    const answerEl = document.getElementById('revealAnswer');
+    revealBtn.addEventListener('click', () => reveal(revealBtn, answerEl));
+    answerEl.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') reveal(revealBtn, answerEl);
     });
-  });
+  }
+}
 
-  participantListEl.querySelectorAll('[data-remove]').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      if (!confirm('참여자를 삭제할까요?')) return;
-      const pid = btn.dataset.remove;
-      const { error } = await supabaseClient.from('participants').delete().eq('id', pid);
+// 금액만 바뀐 경우 전체를 다시 그리지 않고 합계만 갱신한다 (입력칸 포커스 유지)
+function refreshTotals() {
+  const { total, missing } = settlementTotals();
+  const totalEl = document.getElementById('totalAmount');
+  if (totalEl) totalEl.textContent = formatWon(total);
+  const missingRow = document.getElementById('missingRow');
+  if (missingRow) {
+    missingRow.hidden = !missing;
+    document.getElementById('missingCount').textContent = `${missing}명`;
+  }
+}
 
-      if (error) {
-        showToast('삭제에 실패했어요.');
-        console.error(error);
-        return;
-      }
-      await loadOrder();
-      showToast('삭제되었어요.');
-    });
+async function reveal(btn, answerEl) {
+  const answer = answerEl.value.trim();
+  const revealError = document.getElementById('revealError');
+  revealError.classList.remove('show');
+
+  if (!answer) {
+    revealError.textContent = '정답을 입력해주세요.';
+    revealError.classList.add('show');
+    return;
+  }
+
+  await withBusy(btn, '확인 중...', async () => {
+    const { data, error } = await withTimeout(
+      supabaseClient.rpc('reveal_settlement', { p_order_id: orderId, p_quiz_answer: answer }).single()
+    );
+
+    if (error) {
+      console.error(error);
+      revealError.textContent = error.message.includes('WRONG_ANSWER')
+        ? '정답이 아니에요. 주문자에게 물어보세요.'
+        : connectionErrorMessage(error);
+      revealError.classList.add('show');
+      return;
+    }
+    revealedAccount = data;
   });
+  if (revealedAccount) renderSettlement();
+}
+
+async function saveAmount(p, input) {
+  const prev = p.amount ?? '';
+  const raw = input.value.trim();
+  const amount = raw === '' ? null : Math.round(Number(raw));
+
+  if (amount !== null && (!Number.isFinite(amount) || amount < 0)) {
+    showToast('금액은 0 이상의 숫자로 입력해주세요.');
+    input.value = prev;
+    return;
+  }
+  const pin = requirePin();
+  if (!pin) {
+    input.value = prev;
+    return;
+  }
+
+  input.disabled = true;
+  const { error } = await withTimeout(
+    supabaseClient.rpc('update_participant_amount', {
+      p_participant_id: p.id,
+      p_order_id: orderId,
+      p_pin: pin,
+      p_amount: amount,
+    })
+  );
+  input.disabled = false;
+
+  if (error) {
+    console.error(error);
+    showToast(pinErrorMessage(error, '저장에 실패했어요.'));
+    input.value = prev;
+    return;
+  }
+  rememberPin(pin);
+  p.amount = amount;
+  input.value = amount ?? '';
+  refreshTotals();
+  showToast(`${p.name} 님 금액을 저장했어요.`);
+}
+
+async function removeParticipant(p) {
+  const ok = await askConfirm(`${p.name} 님의 참여를 취소할까요?`, '참여 취소');
+  if (!ok) return;
+
+  const { error } = await withTimeout(
+    supabaseClient.from('participants').delete().eq('id', p.id)
+  );
+  if (error) {
+    console.error(error);
+    showToast(error.message === 'TIMEOUT' ? connectionErrorMessage(error) : '삭제에 실패했어요.');
+    return;
+  }
+  await loadOrder();
+  showToast('참여를 취소했어요.');
 }
 
 joinForm.addEventListener('submit', async (e) => {
@@ -225,73 +370,129 @@ joinForm.addEventListener('submit', async (e) => {
     joinError.classList.add('show');
     return;
   }
-
-  const { error } = await supabaseClient
-    .from('participants')
-    .insert({ order_id: orderId, name, menu });
-
-  if (error) {
-    joinError.textContent = error.message.includes('MAX_PARTICIPANTS_REACHED')
-      ? '참여자는 최대 10명까지 가능해요.'
-      : '참여에 실패했어요.';
+  if (currentOrder.participants.some((p) => p.name === name && p.menu === menu)) {
+    joinError.textContent = '같은 이름과 메뉴로 이미 참여했어요.';
     joinError.classList.add('show');
-    console.error(error);
     return;
   }
 
-  joinForm.reset();
+  let joined = false;
+  await withBusy(joinBtn, '등록 중...', async () => {
+    const { error } = await withTimeout(
+      supabaseClient.from('participants').insert({ order_id: orderId, name, menu })
+    );
+    if (error) {
+      console.error(error);
+      joinError.textContent = error.message.includes('MAX_PARTICIPANTS_REACHED')
+        ? `참여자는 최대 ${MAX_PARTICIPANTS}명까지 가능해요.`
+        : connectionErrorMessage(error);
+      joinError.classList.add('show');
+      return;
+    }
+    joined = true;
+  });
+
+  // 버튼 상태(마감 여부)는 새로 불러온 뒤 다시 정해지므로 withBusy 밖에서 갱신한다.
   await loadOrder();
-  showToast('참여가 등록되었어요!');
+  if (joined) {
+    safeStore.set('localStorage', 'bt:myName', name);
+    document.getElementById('joinMenu').value = '';
+    showToast('참여가 등록되었어요!');
+  }
 });
 
 settleForm.addEventListener('submit', async (e) => {
   e.preventDefault();
+  const pin = requirePin();
+  if (!pin) return;
 
-  const pin = getManagePin();
-  if (!/^\d{4}$/.test(pin)) {
-    showToast('관리 비밀번호(4자리)를 먼저 입력해주세요.');
+  const bank = document.getElementById('bankName').value.trim();
+  const holder = document.getElementById('accountHolder').value.trim();
+  const number = document.getElementById('accountNumber').value.trim();
+  if (!bank || !holder || !number) {
+    showToast('은행명, 예금주, 계좌번호를 모두 입력해주세요.');
     return;
   }
 
-  const { error } = await supabaseClient.rpc('update_settlement', {
-    p_order_id: Number(orderId),
-    p_pin: pin,
-    p_bank_name: document.getElementById('bankName').value.trim(),
-    p_account_holder: document.getElementById('accountHolder').value.trim(),
-    p_account_number: document.getElementById('accountNumber').value.trim(),
-  });
-
-  if (error) {
-    showToast(
-      error.message.includes('INVALID_PIN') ? '관리 비밀번호가 틀렸어요.' : '저장에 실패했어요.'
+  await withBusy(settleBtn, '저장 중...', async () => {
+    const { error } = await withTimeout(
+      supabaseClient.rpc('update_settlement', {
+        p_order_id: orderId,
+        p_pin: pin,
+        p_bank_name: bank,
+        p_account_holder: holder,
+        p_account_number: number,
+      })
     );
-    console.error(error);
-    return;
-  }
-  await loadOrder();
-  showToast('정산 계좌가 저장되었어요.');
+
+    if (error) {
+      console.error(error);
+      showToast(pinErrorMessage(error, '저장에 실패했어요.'));
+      return;
+    }
+    rememberPin(pin);
+    // 저장한 사람은 이미 계좌를 알고 있으니 퀴즈 없이 바로 보여준다.
+    revealedAccount = { bank_name: bank, account_holder: holder, account_number: number };
+    renderSettlement();
+    showToast('정산 계좌가 저장되었어요.');
+  });
 });
 
 deleteOrderBtn.addEventListener('click', async () => {
-  const pin = getManagePin();
-  if (!/^\d{4}$/.test(pin)) {
-    showToast('관리 비밀번호(4자리)를 먼저 입력해주세요.');
-    return;
-  }
-  if (!confirm('정말 이 주문을 삭제할까요? 참여자 정보도 모두 함께 사라져요.')) return;
+  const pin = requirePin();
+  if (!pin) return;
+  const ok = await askConfirm('정말 이 주문을 삭제할까요? 참여자 정보도 모두 함께 사라져요.');
+  if (!ok) return;
 
-  const { error } = await supabaseClient.rpc('delete_order', {
-    p_order_id: Number(orderId),
-    p_pin: pin,
-  });
-
-  if (error) {
-    showToast(
-      error.message.includes('INVALID_PIN') ? '관리 비밀번호가 틀렸어요.' : '삭제에 실패했어요.'
+  await withBusy(deleteOrderBtn, '삭제 중...', async () => {
+    const { error } = await withTimeout(
+      supabaseClient.rpc('delete_order', { p_order_id: orderId, p_pin: pin })
     );
-    console.error(error);
-    return;
-  }
-
-  window.location.href = 'index.html';
+    if (error) {
+      console.error(error);
+      showToast(pinErrorMessage(error, '삭제에 실패했어요.'));
+      return;
+    }
+    window.location.href = 'index.html';
+  });
 });
+
+shareBtn.addEventListener('click', async () => {
+  const url = shareUrl();
+  if (navigator.share && window.matchMedia('(pointer: coarse)').matches) {
+    try {
+      await navigator.share({ title: `${currentOrder.store_name} 같이 주문해요`, url });
+      return;
+    } catch (e) {
+      if (e && e.name === 'AbortError') return;
+    }
+  }
+  const ok = await copyText(url);
+  showToast(ok ? '링크를 복사했어요. 함께 먹을 사람들에게 보내주세요.' : '복사에 실패했어요.');
+});
+
+managePinEl.addEventListener('input', () => {
+  managePinEl.value = managePinEl.value.replace(/\D/g, '').slice(0, 4);
+});
+
+// 다른 사람이 참여했을 수 있으니, 탭으로 돌아오면 다시 불러온다.
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && orderId && currentOrder) loadOrder();
+});
+
+if (!orderId) {
+  storeNameEl.textContent = '잘못된 접근입니다';
+  infoRowEl.innerHTML = '<span>주문 링크를 다시 확인해주세요.</span>';
+} else {
+  const savedPin = safeStore.get('sessionStorage', PIN_KEY);
+  if (savedPin) managePinEl.value = savedPin;
+  const savedName = safeStore.get('localStorage', 'bt:myName');
+  if (savedName) document.getElementById('joinName').value = savedName;
+
+  if (params.get('created') === '1') {
+    createdNoteEl.hidden = false;
+    // 주소창에서 created 표시를 지워, 이 주소를 그대로 공유해도 안내가 뜨지 않게 한다.
+    history.replaceState(null, '', `?id=${orderId}`);
+  }
+  loadOrder();
+}

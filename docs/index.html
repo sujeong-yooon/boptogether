@@ -16,11 +16,20 @@
 
   <div class="card">
     <div class="cal-nav">
-      <button id="prevMonth" aria-label="이전 달">◀</button>
-      <div class="month-label" id="monthLabel"></div>
-      <button id="nextMonth" aria-label="다음 달">▶</button>
+      <button type="button" id="prevMonth" aria-label="이전 달">◀</button>
+      <div class="month-center">
+        <div class="month-label" id="monthLabel"></div>
+        <button type="button" class="today-btn" id="todayBtn">오늘</button>
+      </div>
+      <button type="button" id="nextMonth" aria-label="다음 달">▶</button>
     </div>
     <div class="cal-grid" id="calGrid"></div>
+    <div class="status-bar" id="calStatus" role="status"></div>
+  </div>
+
+  <div class="card" id="upcomingCard">
+    <h2>다가오는 주문</h2>
+    <div id="upcomingList"><p class="empty-state">불러오는 중...</p></div>
   </div>
 
   <p class="empty-state">날짜를 눌러 주문을 등록하거나 참여할 수 있어요.</p>
@@ -88,7 +97,7 @@
       />
 
       <p class="error-text" id="newOrderError"></p>
-      <button type="submit" class="btn full">등록하기</button>
+      <button type="submit" class="btn full" id="newOrderSubmit">등록하기</button>
     </form>
   </div>
 </div>
