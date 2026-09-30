@@ -7,98 +7,225 @@
 <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
-<div class="page">
-  <div class="brand">
-    <span class="emoji">🍱</span>
-    <h1>밥투게더</h1>
-    <span class="tag">최대 10명 참여</span>
-  </div>
+<div class="app">
+  <header class="topbar">
+    <a class="brand" href="index.html">
+      <span class="emoji">🍱</span>
+      <h1>밥투게더</h1>
+    </a>
+    <span class="tag">날짜를 골라 같이 주문하고 한 번에 정산해요. 최대 10명까지</span>
+  </header>
 
-  <div class="card">
-    <div class="cal-nav">
-      <button type="button" id="prevMonth" aria-label="이전 달">◀</button>
-      <div class="month-center">
-        <div class="month-label" id="monthLabel"></div>
-        <button type="button" class="today-btn" id="todayBtn">오늘</button>
+  <div class="layout">
+    <!-- 왼쪽: 달력과 다가오는 주문 -->
+    <aside class="side">
+      <div class="card">
+        <div class="cal-nav">
+          <button type="button" id="prevMonth" aria-label="이전 달">◀</button>
+          <div class="month-center">
+            <div class="month-label" id="monthLabel"></div>
+            <button type="button" class="today-btn" id="todayBtn">오늘</button>
+          </div>
+          <button type="button" id="nextMonth" aria-label="다음 달">▶</button>
+        </div>
+        <div class="cal-grid" id="calGrid"></div>
+        <div class="status-bar" id="calStatus" role="status"></div>
       </div>
-      <button type="button" id="nextMonth" aria-label="다음 달">▶</button>
-    </div>
-    <div class="cal-grid" id="calGrid"></div>
-    <div class="status-bar" id="calStatus" role="status"></div>
-  </div>
 
-  <div class="card" id="upcomingCard">
-    <h2>다가오는 주문</h2>
-    <div id="upcomingList"><p class="empty-state">불러오는 중...</p></div>
-  </div>
+      <div class="card">
+        <h2>다가오는 주문</h2>
+        <div id="upcomingList"><p class="empty-state">불러오는 중...</p></div>
+      </div>
+    </aside>
 
-  <p class="empty-state">날짜를 눌러 주문을 등록하거나 참여할 수 있어요.</p>
+    <!-- 오른쪽: 날짜별 주문 목록, 새 주문 등록, 주문 상세가 이 자리에서 바뀐다 -->
+    <main class="main" id="mainPane">
+      <!-- 날짜별 주문 목록 + 새 주문 등록 -->
+      <section id="dayView">
+        <div class="card">
+          <div class="pane-head">
+            <div>
+              <h2 class="pane-title" id="dayTitle">오늘 주문</h2>
+              <p class="pane-sub" id="daySub">목록에서 주문을 고르면 참여하고 정산할 수 있어요.</p>
+            </div>
+            <button type="button" class="btn" id="openNewOrderBtn">+ 새 주문 등록</button>
+          </div>
+          <div id="dayOrderList"></div>
+        </div>
+
+        <div class="card" id="newOrderPanel" hidden>
+          <div class="pane-head">
+            <h2 class="pane-title">새 주문 등록</h2>
+            <button type="button" class="link-btn muted" id="newOrderCancel">닫기</button>
+          </div>
+          <form id="newOrderForm">
+            <div class="form-grid">
+              <div>
+                <label for="ordererName">주문자이름</label>
+                <input type="text" id="ordererName" required maxlength="20" placeholder="예: 김수정" />
+              </div>
+              <div>
+                <label for="newStoreName">매장명</label>
+                <input type="text" id="newStoreName" required maxlength="30" placeholder="예: 옆집 김밥" />
+              </div>
+              <div>
+                <label for="orderDate">주문날짜</label>
+                <input type="date" id="orderDate" required />
+              </div>
+              <div>
+                <label for="orderTime">주문시간</label>
+                <input type="time" id="orderTime" required value="12:00" />
+              </div>
+              <div>
+                <label for="orderPin">관리 비밀번호 (숫자 4자리)</label>
+                <input
+                  type="password"
+                  id="orderPin"
+                  required
+                  inputmode="numeric"
+                  pattern="[0-9]{4}"
+                  maxlength="4"
+                  autocomplete="new-password"
+                  placeholder="나만 아는 값. 금액 입력, 계좌 등록에 필요해요"
+                />
+              </div>
+              <div></div>
+              <div>
+                <label for="quizQuestion">계좌 확인 퀴즈 질문</label>
+                <input type="text" id="quizQuestion" required maxlength="50" placeholder="예: 우리 팀 회식 단골 메뉴는?" />
+              </div>
+              <div>
+                <label for="quizAnswer">퀴즈 정답</label>
+                <input type="text" id="quizAnswer" required maxlength="30" placeholder="참여자들에게 알려줄 정답이에요" />
+              </div>
+            </div>
+            <p class="error-text" id="newOrderError"></p>
+            <div class="form-actions">
+              <button type="submit" class="btn" id="newOrderSubmit">등록하기</button>
+            </div>
+          </form>
+        </div>
+      </section>
+
+      <!-- 주문 상세 -->
+      <section id="orderView" hidden>
+        <button type="button" class="back-link" id="backToDay">← 목록으로</button>
+
+        <div class="card order-header" id="orderHeader">
+          <span class="owner-badge" id="ownerBadge" hidden>주문자 모드</span>
+          <div class="header-top">
+            <div class="store-name" id="detailStoreName">불러오는 중...</div>
+            <button type="button" class="btn secondary small" id="shareBtn" hidden>링크 복사</button>
+          </div>
+          <div class="info-row" id="infoRow"></div>
+          <div class="status-bar" id="orderStatus" role="status"></div>
+        </div>
+
+        <div class="card created-note" id="createdNote" hidden>
+          <strong>주문이 등록됐어요.</strong>
+          <p><b>링크 복사</b>로 주소를 공유하면 함께 먹을 사람들이 이름과 메뉴를 남길 수 있어요.
+          오른쪽 주문자 관리에서 정산 계좌도 미리 등록해두세요.</p>
+        </div>
+
+        <div class="detail-grid" id="orderBody" hidden>
+          <div class="card participants-card">
+            <div class="section-head">
+              <h2>참여자</h2>
+              <span class="count-badge" id="countBadge"></span>
+            </div>
+            <div class="participant-head">
+              <span>이름</span>
+              <span>메뉴</span>
+              <span>정산금액</span>
+              <span></span>
+            </div>
+            <div id="participantList"></div>
+            <p class="empty-state" id="participantEmpty" hidden>
+              아직 참여자가 없어요. 첫 번째로 참여해보세요!
+            </p>
+
+            <form id="joinForm" class="join-form">
+              <div>
+                <label for="joinName">내 이름</label>
+                <input type="text" id="joinName" required maxlength="20" placeholder="예: 이지은" />
+              </div>
+              <div>
+                <label for="joinMenu">메뉴명</label>
+                <input type="text" id="joinMenu" required maxlength="30" placeholder="예: 제육볶음" />
+              </div>
+              <button type="submit" class="btn" id="joinBtn">참여하기</button>
+            </form>
+            <p class="error-text" id="joinError"></p>
+          </div>
+
+          <div class="detail-side">
+            <div class="card">
+              <h2>정산</h2>
+              <div id="settleSummary"></div>
+            </div>
+
+            <!-- 참여자 화면: 주문자 확인 입구 -->
+            <div class="card owner-entry" id="ownerEntry">
+              <button type="button" class="link-btn" id="ownerEntryToggle">주문자이신가요? 관리 메뉴 열기</button>
+              <form id="ownerLoginForm" hidden>
+                <label for="managePin">관리 비밀번호 (주문 등록 때 정한 숫자 4자리)</label>
+                <div class="inline-row">
+                  <input
+                    type="password"
+                    id="managePin"
+                    inputmode="numeric"
+                    pattern="[0-9]{4}"
+                    maxlength="4"
+                    autocomplete="off"
+                    placeholder="숫자 4자리"
+                  />
+                  <button type="submit" class="btn" id="ownerLoginBtn">확인</button>
+                </div>
+                <p class="error-text" id="ownerLoginError"></p>
+              </form>
+            </div>
+
+            <!-- 주문자 화면 -->
+            <div class="card" id="ownerPanel" hidden>
+              <div class="section-head">
+                <h2>주문자 관리</h2>
+                <button type="button" class="link-btn muted" id="ownerLogoutBtn">주문자 모드 나가기</button>
+              </div>
+              <p class="hint">참여자 목록에서 금액을 바로 입력할 수 있어요. 입금받을 계좌를 등록하면 참여자가 퀴즈를 맞힌 뒤 볼 수 있어요.</p>
+              <form id="settleForm">
+                <div class="settle-grid">
+                  <div>
+                    <label for="bankName">은행명</label>
+                    <input type="text" id="bankName" maxlength="20" placeholder="예: 카카오뱅크" />
+                  </div>
+                  <div>
+                    <label for="accountHolder">예금주</label>
+                    <input type="text" id="accountHolder" maxlength="20" placeholder="예: 김수정" />
+                  </div>
+                  <div class="full">
+                    <label for="accountNumber">계좌번호</label>
+                    <input type="text" id="accountNumber" maxlength="30" inputmode="numeric" placeholder="예: 3333-01-1234567" />
+                  </div>
+                </div>
+                <button type="submit" class="btn full secondary" id="settleBtn">정산 계좌 저장</button>
+              </form>
+              <button type="button" class="btn full danger" id="deleteOrderBtn">주문 전체 삭제</button>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
 </div>
 
-<!-- 날짜 클릭 시: 해당 날짜의 주문 목록 -->
-<div class="modal-backdrop hidden" id="dayModalBackdrop">
-  <div class="modal">
-    <div class="modal-header">
-      <h2 id="dayModalTitle">주문 목록</h2>
-      <button class="close" id="dayModalClose">&times;</button>
+<!-- 확인 창 (브라우저 기본 confirm 대신) -->
+<div class="modal-backdrop center hidden" id="confirmBackdrop">
+  <div class="modal dialog" role="alertdialog" aria-modal="true" aria-labelledby="confirmMsg">
+    <p id="confirmMsg"></p>
+    <div class="dialog-actions">
+      <button type="button" class="btn secondary" id="confirmCancel">취소</button>
+      <button type="button" class="btn danger-solid" id="confirmOk">삭제</button>
     </div>
-    <div id="dayOrderList"></div>
-    <button class="btn full" id="openNewOrderBtn">+ 새 주문 등록</button>
-  </div>
-</div>
-
-<!-- 새 주문 등록 폼 -->
-<div class="modal-backdrop hidden" id="newOrderBackdrop">
-  <div class="modal">
-    <div class="modal-header">
-      <h2>새 주문 등록</h2>
-      <button class="close" id="newOrderClose">&times;</button>
-    </div>
-    <form id="newOrderForm">
-      <label for="ordererName">주문자이름</label>
-      <input type="text" id="ordererName" required maxlength="20" placeholder="예: 김수정" />
-
-      <label for="storeName">매장명</label>
-      <input type="text" id="storeName" required maxlength="30" placeholder="예: 옆집 김밥" />
-
-      <label for="orderDate">주문날짜</label>
-      <input type="date" id="orderDate" required />
-
-      <label for="orderTime">주문시간</label>
-      <input type="time" id="orderTime" required value="12:00" />
-
-      <label for="orderPin">관리 비밀번호 (숫자 4자리)</label>
-      <input
-        type="password"
-        id="orderPin"
-        required
-        inputmode="numeric"
-        pattern="[0-9]{4}"
-        maxlength="4"
-        placeholder="계좌 수정·주문 삭제할 때 필요해요 (나만 알기)"
-      />
-
-      <label for="quizQuestion">계좌 확인 퀴즈 질문</label>
-      <input
-        type="text"
-        id="quizQuestion"
-        required
-        maxlength="50"
-        placeholder="예: 우리 팀 회식 단골 메뉴는?"
-      />
-
-      <label for="quizAnswer">퀴즈 정답</label>
-      <input
-        type="text"
-        id="quizAnswer"
-        required
-        maxlength="30"
-        placeholder="참여자들에게 알려줄 정답이에요"
-      />
-
-      <p class="error-text" id="newOrderError"></p>
-      <button type="submit" class="btn full" id="newOrderSubmit">등록하기</button>
-    </form>
   </div>
 </div>
 
@@ -106,6 +233,7 @@
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="js/supabase-config.js"></script>
+<script src="js/order.js"></script>
 <script src="js/calendar.js"></script>
 </body>
 </html>

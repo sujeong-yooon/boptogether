@@ -983,3 +983,244 @@ a.order-list-item {
     grid-area: remove;
   }
 }
+
+/* ── 한 화면 배치: 왼쪽 달력, 오른쪽 작업 영역 */
+.app {
+  max-width: 1320px;
+  margin: 0 auto;
+  padding: 28px 32px 64px;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  margin-bottom: 22px;
+}
+
+.topbar .brand {
+  margin: 0;
+  text-decoration: none;
+}
+
+.topbar .tag {
+  font-size: 13px;
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: 420px minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+
+.side {
+  position: sticky;
+  top: 24px;
+}
+
+.main {
+  min-width: 0;
+}
+
+.pane-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.pane-title {
+  font-size: 1.25rem;
+  font-weight: 800;
+  letter-spacing: -0.015em;
+  margin: 0;
+}
+
+.pane-sub {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--text-muted);
+  word-break: keep-all;
+}
+
+.pane-head .btn {
+  flex-shrink: 0;
+}
+
+#dayOrderList {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 10px;
+}
+
+#dayOrderList .order-list-item {
+  margin-bottom: 0;
+}
+
+#dayOrderList .empty-state,
+#dayOrderList .empty-block {
+  grid-column: 1 / -1;
+}
+
+.empty-block {
+  text-align: center;
+  padding: 36px 16px;
+  color: var(--text-muted);
+  font-size: 14px;
+  background: var(--bg);
+  border-radius: var(--radius-sm);
+}
+
+.empty-block p {
+  margin: 0 0 12px;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 16px;
+}
+
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 18px;
+}
+
+.form-actions .btn {
+  min-width: 160px;
+}
+
+/* 선택한 날짜 */
+.cal-cell.selected {
+  background: var(--accent);
+}
+
+.cal-cell.selected .day-num,
+.cal-cell.selected.sun .day-num,
+.cal-cell.selected.sat .day-num {
+  color: #fff;
+  opacity: 1;
+}
+
+.cal-cell.selected .count,
+.cal-cell.selected.has-orders .count {
+  background: #fff;
+  color: var(--accent);
+}
+
+/* 주문 상세 */
+button.back-link {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.detail-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(300px, 1fr);
+  gap: 0 16px;
+  align-items: start;
+}
+
+.participants-card .participant-head,
+.participants-card .participant-row {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr) 150px 32px;
+  gap: 12px;
+}
+
+.participants-card .participant-row {
+  font-size: 14px;
+  padding: 12px 0;
+}
+
+.participants-card .participant-head {
+  font-size: 12px;
+}
+
+.join-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr) auto;
+  gap: 0 12px;
+  align-items: end;
+  margin-top: 14px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border-soft);
+}
+
+.join-form .btn {
+  padding: 10px 22px;
+  height: 41px;
+}
+
+.participants-card .error-text {
+  margin-top: 8px;
+}
+
+/* 중간 폭: 상세의 두 열을 한 열로 */
+@media (max-width: 1180px) {
+  .detail-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* 좁은 화면: 달력과 작업 영역을 위아래로 */
+@media (max-width: 959px) {
+  .app {
+    max-width: 640px;
+    padding: 20px 16px 60px;
+  }
+  .layout {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+  .side {
+    position: static;
+  }
+  .topbar .tag {
+    font-size: 12px;
+  }
+  .pane-head {
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 560px) {
+  .form-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .form-grid > div:empty {
+    display: none;
+  }
+  .form-actions .btn {
+    width: 100%;
+  }
+  .join-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .join-form .btn {
+    margin-top: 14px;
+    width: 100%;
+  }
+  .pane-head .btn {
+    width: 100%;
+  }
+}
+
+@media (max-width: 420px) {
+  .participants-card .participant-row {
+    grid-template-columns: auto 1fr auto;
+  }
+}
+
+#participantList.no-anim .participant-row {
+  animation: none;
+  opacity: 1;
+  transform: none;
+}

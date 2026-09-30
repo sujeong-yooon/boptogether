@@ -1,8 +1,9 @@
-const params = new URLSearchParams(window.location.search);
-const orderIdRaw = params.get('id');
-const orderId = /^\d+$/.test(orderIdRaw || '') ? Number(orderIdRaw) : null;
+// 주문 상세는 별도 페이지가 아니라 메인 화면 오른쪽 영역(#orderView)에서 열린다.
+// 지금 열려 있는 주문 번호. openOrderView()가 바꾼다.
+let orderId = null;
 
-const storeNameEl = document.getElementById('storeName');
+const orderViewEl = document.getElementById('orderView');
+const storeNameEl = document.getElementById('detailStoreName');
 const infoRowEl = document.getElementById('infoRow');
 const orderStatusEl = document.getElementById('orderStatus');
 const orderBodyEl = document.getElementById('orderBody');
@@ -27,8 +28,8 @@ const ownerPanelEl = document.getElementById('ownerPanel');
 const ownerBadgeEl = document.getElementById('ownerBadge');
 
 const MAX_PARTICIPANTS = 10;
-const PIN_KEY = `bt:pin:${orderId}`;
-const MINE_KEY = `bt:mine:${orderId}`;
+const pinKey = () => `bt:pin:${orderId}`;
+const mineKey = () => `bt:mine:${orderId}`;
 
 // pin_hash/quiz_answer_hash/계좌 정보는 절대 일반 조회로 내려받지 않도록
 // 컬럼을 명시적으로 지정 (계좌는 reveal_settlement() 함수로 퀴즈를 맞혀야만 받아옴)
@@ -43,7 +44,7 @@ let ownerPin = null;
 let revealedAccount = null;
 
 function shareUrl() {
-  return `${window.location.origin}${window.location.pathname}?id=${orderId}`;
+  return `${window.location.origin}${window.location.pathname}?order=${orderId}`;
 }
 
 function formatWon(n) {
@@ -57,14 +58,14 @@ function isOwner() {
 // 이 기기에서 등록한 참여 건. 참여자는 자기 것만 취소 버튼이 보인다.
 function myParticipantIds() {
   try {
-    return JSON.parse(safeStore.get('localStorage', MINE_KEY) || '[]');
+    return JSON.parse(safeStore.get('localStorage', mineKey()) || '[]');
   } catch (e) {
     return [];
   }
 }
 
 function setMyParticipantIds(ids) {
-  safeStore.set('localStorage', MINE_KEY, JSON.stringify(ids));
+  safeStore.set('localStorage', mineKey(), JSON.stringify(ids));
 }
 
 function pinErrorMessage(error, fallback) {
@@ -77,7 +78,7 @@ function pinErrorMessage(error, fallback) {
 
 function forgetPin() {
   try {
-    window.localStorage.removeItem(PIN_KEY);
+    window.localStorage.removeItem(pinKey());
   } catch (e) {
     /* 무시 */
   }
@@ -86,9 +87,11 @@ function forgetPin() {
 // 관리 비밀번호를 서버에서 확인하고, 맞으면 주문자 화면으로 바꾼다.
 // 성공 시 저장된 계좌도 함께 받아와 퀴즈 없이 보여주고 수정 칸에 채운다.
 async function enterOwnerMode(pin, { silent = false } = {}) {
+  const forId = orderId;
   const { data, error } = await withTimeout(
-    supabaseClient.rpc('verify_order_pin', { p_order_id: orderId, p_pin: pin }).maybeSingle()
+    supabaseClient.rpc('verify_order_pin', { p_order_id: forId, p_pin: pin }).maybeSingle()
   );
+  if (forId !== orderId) return false;
   if (error) {
     console.error(error);
     if (error.message && error.message.includes('INVALID_PIN')) forgetPin();
@@ -101,7 +104,7 @@ async function enterOwnerMode(pin, { silent = false } = {}) {
     return false;
   }
   ownerPin = pin;
-  safeStore.set('localStorage', PIN_KEY, pin);
+  safeStore.set('localStorage', pinKey(), pin);
   const account = data || {};
   revealedAccount = {
     bank_name: account.bank_name || null,
@@ -197,14 +200,17 @@ async function loadOrder() {
     return;
   }
 
+  const forId = orderId;
   const { data: order, error } = await withTimeout(
     supabaseClient
       .from('orders')
       .select(`${ORDER_COLUMNS}, participants(id, name, menu, amount, created_at)`)
-      .eq('id', orderId)
+      .eq('id', forId)
       .order('id', { referencedTable: 'participants', ascending: true })
       .maybeSingle()
   );
+  // 응답을 기다리는 사이 다른 주문을 열었으면 버린다.
+  if (forId !== orderId) return;
 
   if (error) {
     console.error(error);
@@ -254,6 +260,10 @@ function renderParticipants() {
   countBadgeEl.textContent = `${participants.length}/${MAX_PARTICIPANTS}명`;
   participantEmptyEl.hidden = participants.length > 0;
   participantListEl.innerHTML = '';
+  // 등장 애니메이션은 주문을 처음 열 때만. 다시 그릴 때마다 돌면 목록이 깜빡인다.
+  const animate = participantListEl.dataset.animatedFor !== String(orderId);
+  participantListEl.dataset.animatedFor = String(orderId);
+  participantListEl.classList.toggle('no-anim', !animate);
 
   participants.forEach((p, i) => {
     const isMine = mine.includes(p.id);
@@ -550,8 +560,9 @@ deleteOrderBtn.addEventListener('click', async () => {
       return;
     }
     forgetPin();
-    safeStore.set('localStorage', MINE_KEY, '[]');
-    window.location.href = 'index.html';
+    safeStore.set('localStorage', mineKey(), '[]');
+    showToast('주문을 삭제했어요.');
+    onOrderDeleted(currentOrder.order_date);
   });
 });
 
@@ -592,7 +603,7 @@ ownerLoginForm.addEventListener('submit', async (e) => {
   });
   if (ok) {
     showToast('주문자 모드로 전환했어요.');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    orderViewEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 });
 
@@ -600,25 +611,49 @@ document.getElementById('ownerLogoutBtn').addEventListener('click', exitOwnerMod
 
 // 다른 사람이 참여했을 수 있으니, 탭으로 돌아오면 다시 불러온다.
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible' && orderId && currentOrder) loadOrder();
+  if (document.visibilityState === 'visible' && !orderViewEl.hidden && currentOrder) loadOrder();
 });
 
-if (!orderId) {
-  storeNameEl.textContent = '잘못된 접근입니다';
-  infoRowEl.innerHTML = '<span>주문 링크를 다시 확인해주세요.</span>';
-} else {
-  const savedName = safeStore.get('localStorage', 'bt:myName');
-  if (savedName) document.getElementById('joinName').value = savedName;
+// 주문 상세를 연다. 이전 주문의 상태(주문자 모드, 공개된 계좌, 입력값)는 모두 비운다.
+function openOrderView(id, { created = false } = {}) {
+  orderId = id;
+  currentOrder = null;
+  ownerPin = null;
+  revealedAccount = null;
 
-  if (params.get('created') === '1') {
-    createdNoteEl.hidden = false;
-    // 주소창에서 created 표시를 지워, 이 주소를 그대로 공유해도 안내가 뜨지 않게 한다.
-    history.replaceState(null, '', `?id=${orderId}`);
+  storeNameEl.textContent = '불러오는 중...';
+  infoRowEl.innerHTML = '';
+  setOrderStatus('');
+  orderBodyEl.hidden = true;
+  shareBtn.hidden = true;
+  ownerBadgeEl.hidden = true;
+  createdNoteEl.hidden = !created;
+  ownerLoginForm.hidden = true;
+  ownerLoginError.classList.remove('show');
+  joinError.classList.remove('show');
+  managePinEl.value = '';
+  ['bankName', 'accountHolder', 'accountNumber', 'joinMenu'].forEach((elId) => {
+    document.getElementById(elId).value = '';
+  });
+  document.getElementById('joinName').value = safeStore.get('localStorage', 'bt:myName') || '';
+
+  if (id === null) {
+    storeNameEl.textContent = '잘못된 접근입니다';
+    infoRowEl.innerHTML = '<span>주문 링크를 다시 확인해주세요.</span>';
+    return;
   }
+
   // 이 기기에 주문자 비밀번호가 저장돼 있으면 조용히 확인해서 주문자 화면으로 연다.
-  const savedPin = safeStore.get('localStorage', PIN_KEY);
+  const savedPin = safeStore.get('localStorage', pinKey());
   const ownerCheck = savedPin && supabaseClient ? enterOwnerMode(savedPin, { silent: true }) : null;
   loadOrder().then(async () => {
-    if (ownerCheck && (await ownerCheck) && currentOrder) render();
+    if (ownerCheck && (await ownerCheck) && currentOrder && orderId === id) render();
   });
+}
+
+function closeOrderView() {
+  orderId = null;
+  currentOrder = null;
+  ownerPin = null;
+  revealedAccount = null;
 }
