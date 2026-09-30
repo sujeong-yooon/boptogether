@@ -263,3 +263,34 @@ create policy "participants_delete" on participants for delete using (true);
 revoke select on orders from anon, authenticated;
 grant select (id, orderer_name, store_name, order_date, order_time, quiz_question, created_at)
   on orders to anon, authenticated;
+
+-- ── 주문자 확인
+--    관리 비밀번호가 맞으면 저장된 계좌를 돌려준다. 앱은 이 결과로 주문자 화면을 열고,
+--    계좌를 퀴즈 없이 보여주며 수정 칸에 채운다. 틀리면 INVALID_PIN.
+create or replace function verify_order_pin(
+  p_order_id bigint,
+  p_pin text
+)
+returns table (
+  bank_name text,
+  account_number text,
+  account_holder text
+)
+language plpgsql
+security definer
+set search_path = public, extensions, pg_temp
+as $$
+begin
+  if not exists (
+    select 1 from orders where id = p_order_id and pin_hash is not null and pin_hash = crypt(p_pin, pin_hash)
+  ) then
+    raise exception 'INVALID_PIN';
+  end if;
+
+  return query
+    select o.bank_name, o.account_number, o.account_holder
+    from orders o where o.id = p_order_id;
+end;
+$$;
+
+grant execute on function verify_order_pin(bigint, text) to anon, authenticated;

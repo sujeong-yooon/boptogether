@@ -898,3 +898,88 @@ a.order-list-item {
     font-size: 9px;
   }
 }
+
+/* ── 주문자 모드와 참여자 모드 */
+.owner-badge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: #fff;
+  background: var(--today);
+  border-radius: 999px;
+  padding: 2px 8px;
+  margin-bottom: 8px;
+}
+
+.owner-entry {
+  background: transparent;
+  box-shadow: none;
+  padding: 4px 18px;
+  text-align: center;
+}
+
+.owner-entry form {
+  text-align: left;
+  margin-top: 4px;
+}
+
+.inline-row {
+  display: flex;
+  gap: 8px;
+}
+
+.inline-row input {
+  flex: 1;
+  min-width: 0;
+}
+
+.inline-row .btn {
+  flex-shrink: 0;
+}
+
+.link-btn.muted {
+  color: var(--text-muted);
+  font-weight: 500;
+  font-size: 12px;
+}
+
+.participant-row .amount {
+  font-weight: 600;
+  text-align: right;
+}
+
+.participant-row .amount.empty {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.participant-row .remove-spacer {
+  width: 24px;
+}
+
+.participant-row .me {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-radius: 999px;
+  padding: 0 5px;
+  vertical-align: 1px;
+}
+
+.row.account .value.muted {
+  color: var(--text-muted);
+  font-weight: 400;
+  font-size: 13px;
+}
+
+@media (max-width: 420px) {
+  .participant-row .amount {
+    grid-area: amount;
+    text-align: left;
+  }
+  .participant-row .remove-spacer {
+    grid-area: remove;
+  }
+}

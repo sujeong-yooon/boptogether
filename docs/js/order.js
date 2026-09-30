@@ -19,9 +19,16 @@ const settleBtn = document.getElementById('settleBtn');
 const settleSummaryEl = document.getElementById('settleSummary');
 const deleteOrderBtn = document.getElementById('deleteOrderBtn');
 const managePinEl = document.getElementById('managePin');
+const ownerEntryEl = document.getElementById('ownerEntry');
+const ownerLoginForm = document.getElementById('ownerLoginForm');
+const ownerLoginBtn = document.getElementById('ownerLoginBtn');
+const ownerLoginError = document.getElementById('ownerLoginError');
+const ownerPanelEl = document.getElementById('ownerPanel');
+const ownerBadgeEl = document.getElementById('ownerBadge');
 
 const MAX_PARTICIPANTS = 10;
 const PIN_KEY = `bt:pin:${orderId}`;
+const MINE_KEY = `bt:mine:${orderId}`;
 
 // pin_hash/quiz_answer_hash/계좌 정보는 절대 일반 조회로 내려받지 않도록
 // 컬럼을 명시적으로 지정 (계좌는 reveal_settlement() 함수로 퀴즈를 맞혀야만 받아옴)
@@ -29,6 +36,9 @@ const ORDER_COLUMNS =
   'id, orderer_name, store_name, order_date, order_time, quiz_question, created_at';
 
 let currentOrder = null;
+// 서버에서 확인된 관리 비밀번호. 값이 있으면 주문자 화면을 보여준다.
+// 화면을 나누는 것은 편의일 뿐이고, 실제 권한 검사는 매번 서버 함수가 비밀번호로 한다.
+let ownerPin = null;
 // 퀴즈로 계좌를 한 번 열람하면 이 페이지에 있는 동안은 다시 가리지 않음
 let revealedAccount = null;
 
@@ -40,18 +50,21 @@ function formatWon(n) {
   return `${Number(n).toLocaleString('ko-KR')}원`;
 }
 
-function getManagePin() {
-  return managePinEl.value.trim();
+function isOwner() {
+  return ownerPin !== null;
 }
 
-// 관리 비밀번호가 필요한 동작 전에 호출. 형식이 틀리면 안내하고 입력칸으로 보낸다.
-function requirePin() {
-  const pin = getManagePin();
-  if (/^\d{4}$/.test(pin)) return pin;
-  showToast('주문자 관리의 관리 비밀번호(4자리)를 먼저 입력해주세요.');
-  managePinEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  managePinEl.focus({ preventScroll: true });
-  return null;
+// 이 기기에서 등록한 참여 건. 참여자는 자기 것만 취소 버튼이 보인다.
+function myParticipantIds() {
+  try {
+    return JSON.parse(safeStore.get('localStorage', MINE_KEY) || '[]');
+  } catch (e) {
+    return [];
+  }
+}
+
+function setMyParticipantIds(ids) {
+  safeStore.set('localStorage', MINE_KEY, JSON.stringify(ids));
 }
 
 function pinErrorMessage(error, fallback) {
@@ -62,8 +75,70 @@ function pinErrorMessage(error, fallback) {
   return fallback;
 }
 
-function rememberPin(pin) {
-  safeStore.set('sessionStorage', PIN_KEY, pin);
+function forgetPin() {
+  try {
+    window.localStorage.removeItem(PIN_KEY);
+  } catch (e) {
+    /* 무시 */
+  }
+}
+
+// 관리 비밀번호를 서버에서 확인하고, 맞으면 주문자 화면으로 바꾼다.
+// 성공 시 저장된 계좌도 함께 받아와 퀴즈 없이 보여주고 수정 칸에 채운다.
+async function enterOwnerMode(pin, { silent = false } = {}) {
+  const { data, error } = await withTimeout(
+    supabaseClient.rpc('verify_order_pin', { p_order_id: orderId, p_pin: pin }).maybeSingle()
+  );
+  if (error) {
+    console.error(error);
+    if (error.message && error.message.includes('INVALID_PIN')) forgetPin();
+    if (!silent) {
+      ownerLoginError.textContent = pinErrorMessage(error, '확인에 실패했어요. 잠시 후 다시 시도해주세요.');
+      ownerLoginError.classList.remove('show');
+      void ownerLoginError.offsetWidth;
+      ownerLoginError.classList.add('show');
+    }
+    return false;
+  }
+  ownerPin = pin;
+  safeStore.set('localStorage', PIN_KEY, pin);
+  const account = data || {};
+  revealedAccount = {
+    bank_name: account.bank_name || null,
+    account_holder: account.account_holder || null,
+    account_number: account.account_number || null,
+  };
+  document.getElementById('bankName').value = revealedAccount.bank_name || '';
+  document.getElementById('accountHolder').value = revealedAccount.account_holder || '';
+  document.getElementById('accountNumber').value = revealedAccount.account_number || '';
+  managePinEl.value = '';
+  ownerLoginError.classList.remove('show');
+  if (currentOrder) render();
+  return true;
+}
+
+function exitOwnerMode() {
+  ownerPin = null;
+  revealedAccount = null;
+  forgetPin();
+  ['bankName', 'accountHolder', 'accountNumber'].forEach((id) => {
+    document.getElementById(id).value = '';
+  });
+  ownerLoginForm.hidden = true;
+  render();
+  showToast('참여자 화면으로 돌아왔어요.');
+}
+
+// 주문자 모드 중 비밀번호가 서버에서 거절되면 모드를 해제한다.
+function handleOwnerError(error, fallback) {
+  if (error && error.message && error.message.includes('INVALID_PIN')) {
+    ownerPin = null;
+    revealedAccount = null;
+    forgetPin();
+    render();
+    return '관리 비밀번호가 맞지 않아 주문자 모드를 해제했어요.';
+  }
+  return pinErrorMessage(error, fallback);
 }
 
 function setOrderStatus(msg, { retry = false } = {}) {
@@ -163,6 +238,9 @@ function render() {
   `;
   shareBtn.hidden = false;
   orderBodyEl.hidden = false;
+  ownerBadgeEl.hidden = !isOwner();
+  ownerPanelEl.hidden = !isOwner();
+  ownerEntryEl.hidden = isOwner();
 
   renderParticipants();
   renderSettlement();
@@ -171,27 +249,43 @@ function render() {
 function renderParticipants() {
   const participants = currentOrder.participants;
   const full = participants.length >= MAX_PARTICIPANTS;
+  const owner = isOwner();
+  const mine = myParticipantIds();
   countBadgeEl.textContent = `${participants.length}/${MAX_PARTICIPANTS}명`;
   participantEmptyEl.hidden = participants.length > 0;
   participantListEl.innerHTML = '';
 
   participants.forEach((p, i) => {
+    const isMine = mine.includes(p.id);
+    const canRemove = owner || isMine;
     const row = document.createElement('div');
-    row.className = 'participant-row';
+    row.className = 'participant-row' + (isMine ? ' mine' : '');
     row.style.setProperty('--i', i);
+    const amountCell = owner
+      ? `<input type="number" inputmode="numeric" min="0" step="100" placeholder="금액"
+          value="${p.amount ?? ''}" aria-label="${escapeHtml(p.name)} 정산금액" />`
+      : `<span class="amount ${p.amount == null ? 'empty' : ''}">${
+          p.amount == null ? '미정' : formatWon(p.amount)
+        }</span>`;
     row.innerHTML = `
-      <span class="name">${escapeHtml(p.name)}</span>
+      <span class="name">${escapeHtml(p.name)}${isMine ? ' <small class="me">나</small>' : ''}</span>
       <span class="menu">${escapeHtml(p.menu)}</span>
-      <input type="number" inputmode="numeric" min="0" step="100" placeholder="금액"
-        value="${p.amount ?? ''}" aria-label="${escapeHtml(p.name)} 정산금액" />
-      <button type="button" class="remove-btn" title="참여 취소" aria-label="${escapeHtml(p.name)} 참여 취소">✕</button>
+      ${amountCell}
+      ${
+        canRemove
+          ? `<button type="button" class="remove-btn" title="참여 취소" aria-label="${escapeHtml(p.name)} 참여 취소">✕</button>`
+          : '<span class="remove-spacer"></span>'
+      }
     `;
     const input = row.querySelector('input');
-    input.addEventListener('change', () => saveAmount(p, input));
-    input.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') input.blur();
-    });
-    row.querySelector('.remove-btn').addEventListener('click', () => removeParticipant(p));
+    if (input) {
+      input.addEventListener('change', () => saveAmount(p, input));
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') input.blur();
+      });
+    }
+    const removeBtn = row.querySelector('.remove-btn');
+    if (removeBtn) removeBtn.addEventListener('click', () => removeParticipant(p));
     participantListEl.appendChild(row);
   });
 
@@ -213,6 +307,9 @@ function renderSettlement() {
 
   let accountHtml;
   if (revealedAccount) {
+    const emptyMsg = isOwner()
+      ? '아직 등록하지 않았어요. 아래 주문자 관리에서 등록해주세요.'
+      : '아직 등록되지 않았어요';
     accountHtml = revealedAccount.account_number
       ? `<div class="row account">
            <span class="label">입금 계좌</span>
@@ -221,7 +318,7 @@ function renderSettlement() {
            )}<br /><small>예금주 ${escapeHtml(revealedAccount.account_holder || '-')}</small></span>
          </div>
          <button type="button" class="btn full secondary" id="copyAccountBtn">계좌번호 복사</button>`
-      : `<div class="row"><span class="label">입금 계좌</span><span>아직 등록되지 않았어요</span></div>`;
+      : `<div class="row account"><span class="label">입금 계좌</span><span class="value muted">${emptyMsg}</span></div>`;
   } else {
     accountHtml = `
       <div class="reveal-box">
@@ -312,7 +409,7 @@ async function saveAmount(p, input) {
     input.value = prev;
     return;
   }
-  const pin = requirePin();
+  const pin = ownerPin;
   if (!pin) {
     input.value = prev;
     return;
@@ -331,11 +428,10 @@ async function saveAmount(p, input) {
 
   if (error) {
     console.error(error);
-    showToast(pinErrorMessage(error, '저장에 실패했어요.'));
     input.value = prev;
+    showToast(handleOwnerError(error, '저장에 실패했어요.'));
     return;
   }
-  rememberPin(pin);
   p.amount = amount;
   input.value = amount ?? '';
   refreshTotals();
@@ -354,6 +450,7 @@ async function removeParticipant(p) {
     showToast(error.message === 'TIMEOUT' ? connectionErrorMessage(error) : '삭제에 실패했어요.');
     return;
   }
+  setMyParticipantIds(myParticipantIds().filter((id) => id !== p.id));
   await loadOrder();
   showToast('참여를 취소했어요.');
 }
@@ -378,8 +475,8 @@ joinForm.addEventListener('submit', async (e) => {
 
   let joined = false;
   await withBusy(joinBtn, '등록 중...', async () => {
-    const { error } = await withTimeout(
-      supabaseClient.from('participants').insert({ order_id: orderId, name, menu })
+    const { data, error } = await withTimeout(
+      supabaseClient.from('participants').insert({ order_id: orderId, name, menu }).select('id').single()
     );
     if (error) {
       console.error(error);
@@ -390,6 +487,7 @@ joinForm.addEventListener('submit', async (e) => {
       return;
     }
     joined = true;
+    if (data && data.id) setMyParticipantIds([...myParticipantIds(), data.id]);
   });
 
   // 버튼 상태(마감 여부)는 새로 불러온 뒤 다시 정해지므로 withBusy 밖에서 갱신한다.
@@ -403,7 +501,7 @@ joinForm.addEventListener('submit', async (e) => {
 
 settleForm.addEventListener('submit', async (e) => {
   e.preventDefault();
-  const pin = requirePin();
+  const pin = ownerPin;
   if (!pin) return;
 
   const bank = document.getElementById('bankName').value.trim();
@@ -427,11 +525,9 @@ settleForm.addEventListener('submit', async (e) => {
 
     if (error) {
       console.error(error);
-      showToast(pinErrorMessage(error, '저장에 실패했어요.'));
+      showToast(handleOwnerError(error, '저장에 실패했어요.'));
       return;
     }
-    rememberPin(pin);
-    // 저장한 사람은 이미 계좌를 알고 있으니 퀴즈 없이 바로 보여준다.
     revealedAccount = { bank_name: bank, account_holder: holder, account_number: number };
     renderSettlement();
     showToast('정산 계좌가 저장되었어요.');
@@ -439,7 +535,7 @@ settleForm.addEventListener('submit', async (e) => {
 });
 
 deleteOrderBtn.addEventListener('click', async () => {
-  const pin = requirePin();
+  const pin = ownerPin;
   if (!pin) return;
   const ok = await askConfirm('정말 이 주문을 삭제할까요? 참여자 정보도 모두 함께 사라져요.');
   if (!ok) return;
@@ -450,9 +546,11 @@ deleteOrderBtn.addEventListener('click', async () => {
     );
     if (error) {
       console.error(error);
-      showToast(pinErrorMessage(error, '삭제에 실패했어요.'));
+      showToast(handleOwnerError(error, '삭제에 실패했어요.'));
       return;
     }
+    forgetPin();
+    safeStore.set('localStorage', MINE_KEY, '[]');
     window.location.href = 'index.html';
   });
 });
@@ -475,6 +573,31 @@ managePinEl.addEventListener('input', () => {
   managePinEl.value = managePinEl.value.replace(/\D/g, '').slice(0, 4);
 });
 
+document.getElementById('ownerEntryToggle').addEventListener('click', () => {
+  ownerLoginForm.hidden = !ownerLoginForm.hidden;
+  if (!ownerLoginForm.hidden) managePinEl.focus();
+});
+
+ownerLoginForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const pin = managePinEl.value.trim();
+  if (!/^\d{4}$/.test(pin)) {
+    ownerLoginError.textContent = '숫자 4자리를 입력해주세요.';
+    ownerLoginError.classList.add('show');
+    return;
+  }
+  let ok = false;
+  await withBusy(ownerLoginBtn, '확인 중', async () => {
+    ok = await enterOwnerMode(pin);
+  });
+  if (ok) {
+    showToast('주문자 모드로 전환했어요.');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+});
+
+document.getElementById('ownerLogoutBtn').addEventListener('click', exitOwnerMode);
+
 // 다른 사람이 참여했을 수 있으니, 탭으로 돌아오면 다시 불러온다.
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible' && orderId && currentOrder) loadOrder();
@@ -484,8 +607,6 @@ if (!orderId) {
   storeNameEl.textContent = '잘못된 접근입니다';
   infoRowEl.innerHTML = '<span>주문 링크를 다시 확인해주세요.</span>';
 } else {
-  const savedPin = safeStore.get('sessionStorage', PIN_KEY);
-  if (savedPin) managePinEl.value = savedPin;
   const savedName = safeStore.get('localStorage', 'bt:myName');
   if (savedName) document.getElementById('joinName').value = savedName;
 
@@ -494,5 +615,10 @@ if (!orderId) {
     // 주소창에서 created 표시를 지워, 이 주소를 그대로 공유해도 안내가 뜨지 않게 한다.
     history.replaceState(null, '', `?id=${orderId}`);
   }
-  loadOrder();
+  // 이 기기에 주문자 비밀번호가 저장돼 있으면 조용히 확인해서 주문자 화면으로 연다.
+  const savedPin = safeStore.get('localStorage', PIN_KEY);
+  const ownerCheck = savedPin && supabaseClient ? enterOwnerMode(savedPin, { silent: true }) : null;
+  loadOrder().then(async () => {
+    if (ownerCheck && (await ownerCheck) && currentOrder) render();
+  });
 }

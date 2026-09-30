@@ -355,8 +355,8 @@ newOrderForm.addEventListener('submit', async (e) => {
     }
 
     safeStore.set('localStorage', 'bt:myName', ordererName);
-    // 방금 만든 주문자는 상세 화면에서 관리 비밀번호를 다시 치지 않아도 되게 이 탭에만 기억한다.
-    safeStore.set('sessionStorage', `bt:pin:${data.id}`, pin);
+    // 주문을 만든 기기는 주문자로 기억해서, 상세 화면을 열 때마다 비밀번호를 다시 치지 않게 한다.
+    safeStore.set('localStorage', `bt:pin:${data.id}`, pin);
     window.location.href = `order.html?id=${data.id}&created=1`;
   });
 });
