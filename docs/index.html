@@ -31,22 +31,20 @@
         <div class="cal-grid" id="calGrid"></div>
         <div class="status-bar" id="calStatus" role="status"></div>
       </div>
-
-      <div class="card">
-        <h2>다가오는 주문</h2>
-        <div id="upcomingList"><p class="empty-state">불러오는 중...</p></div>
-      </div>
     </aside>
 
-    <!-- 오른쪽: 날짜별 주문 목록, 새 주문 등록, 주문 상세가 이 자리에서 바뀐다 -->
+    <!-- 오른쪽: 주문 목록(다가오는 주문 전체 또는 고른 날짜), 새 주문 등록, 주문 상세가 이 자리에서 바뀐다 -->
     <main class="main" id="mainPane">
-      <!-- 날짜별 주문 목록 + 새 주문 등록 -->
+      <!-- 주문 목록 + 새 주문 등록 -->
       <section id="dayView">
         <div class="card">
           <div class="pane-head">
             <div>
-              <h2 class="pane-title" id="dayTitle">오늘 주문</h2>
-              <p class="pane-sub" id="daySub">목록에서 주문을 고르면 참여하고 정산할 수 있어요.</p>
+              <h2 class="pane-title">
+                <span id="dayTitle">다가오는 주문</span>
+                <button type="button" class="link-btn muted pane-reset" id="showAllBtn" hidden>전체 일정 보기</button>
+              </h2>
+              <p class="pane-sub" id="daySub">달력에서 날짜를 고르면 그날 주문만 볼 수 있어요.</p>
             </div>
             <button type="button" class="btn" id="openNewOrderBtn">+ 새 주문 등록</button>
           </div>

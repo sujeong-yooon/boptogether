@@ -1,4 +1,5 @@
-// 메인 화면: 왼쪽 달력과 다가오는 주문, 오른쪽의 날짜별 주문 목록과 새 주문 등록.
+// 메인 화면: 왼쪽 달력, 오른쪽의 주문 목록과 새 주문 등록.
+// 주문 목록은 날짜를 고르지 않았으면 오늘 이후 전체(날짜별로 묶음), 골랐으면 그 날짜만 보여준다.
 // 주문 상세(order.js)도 오른쪽 같은 자리에서 열린다. 화면 상태는 주소의 ?date= / ?order= 로 기억해
 // 새로고침, 링크 공유, 브라우저 뒤로 가기가 모두 동작한다.
 // MAX_PARTICIPANTS, ORDER_COLUMNS 는 order.js에 정의돼 있다.
@@ -6,7 +7,6 @@
 const monthLabel = document.getElementById('monthLabel');
 const calGrid = document.getElementById('calGrid');
 const calStatus = document.getElementById('calStatus');
-const upcomingList = document.getElementById('upcomingList');
 const dayViewEl = document.getElementById('dayView');
 const dayTitle = document.getElementById('dayTitle');
 const daySub = document.getElementById('daySub');
@@ -16,6 +16,9 @@ const newOrderForm = document.getElementById('newOrderForm');
 const newOrderError = document.getElementById('newOrderError');
 const newOrderSubmit = document.getElementById('newOrderSubmit');
 const mainPane = document.getElementById('mainPane');
+const showAllBtn = document.getElementById('showAllBtn');
+
+const UPCOMING_LIMIT = 30;
 
 const today = new Date();
 let viewYear = today.getFullYear();
@@ -24,6 +27,8 @@ let selectedDate = null;
 let ordersByDate = {};
 let monthRequestSeq = 0;
 let dayRequestSeq = 0;
+// 상세를 앱 안에서 열었는지. 그렇다면 "목록으로"는 브라우저 뒤로 가기와 같게 동작해 들어온 목록으로 돌아간다.
+let openedOrderFromApp = false;
 
 function pad(n) {
   return String(n).padStart(2, '0');
@@ -69,7 +74,7 @@ function route() {
     return;
   }
   const dateParam = params.get('date');
-  showDay(isValidDate(dateParam) ? dateParam : todayStr);
+  showDay(isValidDate(dateParam) ? dateParam : null);
 }
 
 window.addEventListener('popstate', route);
@@ -82,22 +87,25 @@ function showOrder(id, opts) {
   revealMainOnNarrow();
 }
 
+// dateStr이 null이면 다가오는 주문 전체
 function showDay(dateStr) {
   closeOrderView();
+  openedOrderFromApp = false;
   document.getElementById('orderView').hidden = true;
   dayViewEl.hidden = false;
   document.title = '밥투게더 - 함께 주문하고 정산해요';
 
   const changed = selectedDate !== dateStr;
   selectedDate = dateStr;
-  const [y, m] = dateStr.split('-').map(Number);
-  if (y !== viewYear || m !== viewMonth) {
-    viewYear = y;
-    viewMonth = m;
-    loadMonth();
-  } else {
-    markSelected();
+  if (dateStr) {
+    const [y, m] = dateStr.split('-').map(Number);
+    if (y !== viewYear || m !== viewMonth) {
+      viewYear = y;
+      viewMonth = m;
+      loadMonth();
+    }
   }
+  markSelected();
   if (changed) newOrderPanel.hidden = true;
   loadDayOrders(dateStr);
 }
@@ -106,7 +114,6 @@ function showDay(dateStr) {
 function onOrderDeleted(dateStr) {
   navigate(`date=${dateStr}`, { replace: true });
   loadMonth();
-  loadUpcoming();
 }
 
 // ── 달력
@@ -159,7 +166,9 @@ function renderGrid() {
     cell.setAttribute('aria-label', formatKoreanDate(dateStr));
     cell.innerHTML = `<span class="day-num">${d}</span><span class="count"></span>`;
     cell.addEventListener('click', () => {
-      navigate(`date=${dateStr}`);
+      // 이미 고른 날짜를 다시 누르면 전체 일정으로 돌아간다
+      if (!dayViewEl.hidden && selectedDate === dateStr) navigate('');
+      else navigate(`date=${dateStr}`);
       revealMainOnNarrow();
     });
     calGrid.appendChild(cell);
@@ -256,73 +265,84 @@ function orderItemHtml(o, { showDate = false } = {}) {
   `;
 }
 
-function renderOrderList(container, orders, opts) {
-  container.innerHTML = '';
-  orders.forEach((o) => {
-    const item = document.createElement('a');
-    item.className = 'order-list-item';
-    item.href = `?order=${o.id}`;
-    item.innerHTML = orderItemHtml(o, opts);
-    item.addEventListener('click', (e) => {
-      // 새 탭 열기(Ctrl/가운데 클릭)는 브라우저에 맡긴다
-      if (e.ctrlKey || e.metaKey || e.shiftKey || e.button !== 0) return;
-      e.preventDefault();
-      navigate(`order=${o.id}`);
-    });
-    container.appendChild(item);
+function orderListItem(o, opts) {
+  const item = document.createElement('a');
+  item.className = 'order-list-item';
+  item.href = `?order=${o.id}`;
+  item.innerHTML = orderItemHtml(o, opts);
+  item.addEventListener('click', (e) => {
+    // 새 탭 열기(Ctrl/가운데 클릭)는 브라우저에 맡긴다
+    if (e.ctrlKey || e.metaKey || e.shiftKey || e.button !== 0) return;
+    e.preventDefault();
+    navigate(`order=${o.id}`);
+    openedOrderFromApp = true;
+  });
+  return item;
+}
+
+function emptyBlock(message, buttonLabel) {
+  dayOrderList.innerHTML = `
+    <div class="empty-block">
+      <p>${escapeHtml(message)}</p>
+      <button type="button" class="btn secondary" data-open-new>${escapeHtml(buttonLabel)}</button>
+    </div>`;
+  dayOrderList.querySelector('[data-open-new]').addEventListener('click', openNewOrderPanel);
+}
+
+// 날짜 하나: 카드 격자. 전체: 날짜 제목 아래 카드 격자를 날짜 순으로.
+function renderDayOrders(orders, dateStr) {
+  dayOrderList.innerHTML = '';
+  if (!orders.length) {
+    if (dateStr) emptyBlock('이날 등록된 주문이 없어요.', '이 날짜로 새 주문 등록');
+    else emptyBlock('예정된 주문이 없어요. 달력에서 날짜를 골라 첫 주문을 등록해보세요.', '새 주문 등록');
+    return;
+  }
+
+  const groups = [];
+  for (const o of orders) {
+    const last = groups[groups.length - 1];
+    if (last && last.date === o.order_date) last.items.push(o);
+    else groups.push({ date: o.order_date, items: [o] });
+  }
+
+  groups.forEach((g) => {
+    const section = document.createElement('div');
+    section.className = 'date-group';
+    if (!dateStr) {
+      const head = document.createElement('button');
+      head.type = 'button';
+      head.className = 'date-group-head';
+      head.innerHTML = `${escapeHtml(formatKoreanDate(g.date))}${
+        g.date === todayStr ? ' <span class="today-chip">오늘</span>' : ''
+      }<span class="date-group-count">${g.items.length}건</span>`;
+      head.addEventListener('click', () => navigate(`date=${g.date}`));
+      section.appendChild(head);
+    }
+    const grid = document.createElement('div');
+    grid.className = 'group-items';
+    g.items.forEach((o) => grid.appendChild(orderListItem(o)));
+    section.appendChild(grid);
+    dayOrderList.appendChild(section);
   });
 }
 
-async function loadUpcoming() {
-  if (!supabaseClient) {
-    upcomingList.innerHTML = `<p class="empty-state">${escapeHtml(connectionErrorMessage())}</p>`;
-    return;
-  }
-  const { data: orders, error } = await withTimeout(
-    supabaseClient
-      .from('orders')
-      .select(`${ORDER_COLUMNS}, participants(count)`)
-      .gte('order_date', todayStr)
-      .order('order_date', { ascending: true })
-      .order('order_time', { ascending: true })
-      .limit(5)
-  );
-  if (error) {
-    console.error(error);
-    upcomingList.innerHTML = `<p class="empty-state">${escapeHtml(connectionErrorMessage(error))}</p>`;
-    return;
-  }
-  if (!orders.length) {
-    upcomingList.innerHTML = '<p class="empty-state">예정된 주문이 없어요.</p>';
-    return;
-  }
-  renderOrderList(upcomingList, orders, { showDate: true });
-}
-
-function renderDayOrders(orders) {
-  if (!orders.length) {
-    dayOrderList.innerHTML = `
-      <div class="empty-block">
-        <p>이날 등록된 주문이 없어요.</p>
-        <button type="button" class="btn secondary" data-open-new>이 날짜로 새 주문 등록</button>
-      </div>`;
-    dayOrderList.querySelector('[data-open-new]').addEventListener('click', openNewOrderPanel);
-    return;
-  }
-  renderOrderList(dayOrderList, orders);
-}
-
 async function loadDayOrders(dateStr) {
-  const isToday = dateStr === todayStr;
-  dayTitle.textContent = `${formatKoreanDate(dateStr)}${isToday ? ' 오늘' : ''} 주문`;
-  daySub.textContent =
-    dateStr < todayStr
-      ? '지난 날짜예요. 정산 확인은 그대로 할 수 있어요.'
-      : '목록에서 주문을 고르면 참여하고 정산할 수 있어요.';
+  if (dateStr) {
+    const isToday = dateStr === todayStr;
+    dayTitle.textContent = `${formatKoreanDate(dateStr)}${isToday ? ' 오늘' : ''} 주문`;
+    daySub.textContent =
+      dateStr < todayStr
+        ? '지난 날짜예요. 정산 확인은 그대로 할 수 있어요.'
+        : '주문을 고르면 참여하고 정산할 수 있어요. 같은 날짜를 한 번 더 누르면 전체 일정으로 돌아가요.';
+  } else {
+    dayTitle.textContent = '다가오는 주문';
+    daySub.textContent = '오늘 이후 주문이에요. 달력에서 날짜를 고르면 그날 주문만 볼 수 있어요.';
+  }
+  showAllBtn.hidden = !dateStr;
 
   // 달력에서 이미 받아온 목록이 있으면 바로 보여주고, 최신 참여 인원은 뒤에서 다시 받아온다.
-  const cached = ordersByDate[dateStr];
-  if (cached) renderDayOrders(cached);
+  const cached = dateStr ? ordersByDate[dateStr] : null;
+  if (cached) renderDayOrders(cached, dateStr);
   else dayOrderList.innerHTML = '<p class="empty-state">불러오는 중...</p>';
 
   if (!supabaseClient) {
@@ -331,13 +351,15 @@ async function loadDayOrders(dateStr) {
   }
 
   const seq = ++dayRequestSeq;
-  const { data: orders, error } = await withTimeout(
-    supabaseClient
-      .from('orders')
-      .select(`${ORDER_COLUMNS}, participants(count)`)
-      .eq('order_date', dateStr)
-      .order('order_time', { ascending: true })
-  );
+  let query = supabaseClient.from('orders').select(`${ORDER_COLUMNS}, participants(count)`);
+  query = dateStr
+    ? query.eq('order_date', dateStr).order('order_time', { ascending: true })
+    : query
+        .gte('order_date', todayStr)
+        .order('order_date', { ascending: true })
+        .order('order_time', { ascending: true })
+        .limit(UPCOMING_LIMIT);
+  const { data: orders, error } = await withTimeout(query);
 
   if (seq !== dayRequestSeq || selectedDate !== dateStr) return;
   if (error) {
@@ -347,7 +369,7 @@ async function loadDayOrders(dateStr) {
     }
     return;
   }
-  renderDayOrders(orders);
+  renderDayOrders(orders, dateStr);
 }
 
 // ── 새 주문 등록 (오른쪽 영역 안에서 펼침)
@@ -370,10 +392,16 @@ document.getElementById('newOrderCancel').addEventListener('click', () => {
 });
 
 document.getElementById('backToDay').addEventListener('click', () => {
-  // 이 주문 날짜의 목록으로 돌아간다 (공유 링크로 바로 들어온 경우도 같은 동작)
-  const date = currentOrder ? currentOrder.order_date : selectedDate || todayStr;
-  navigate(`date=${date}`);
+  // 앱 안의 목록에서 들어왔으면 그 목록으로, 공유 링크로 바로 들어왔으면 이 주문 날짜의 목록으로
+  if (openedOrderFromApp) {
+    history.back();
+    return;
+  }
+  const date = currentOrder ? currentOrder.order_date : selectedDate;
+  navigate(date ? `date=${date}` : '');
 });
+
+showAllBtn.addEventListener('click', () => navigate(''));
 
 // 숫자 외 입력은 바로 걸러낸다 (모바일 키패드에서도 문자 입력이 가능한 경우가 있음)
 document.getElementById('orderPin').addEventListener('input', (e) => {
@@ -447,8 +475,8 @@ newOrderForm.addEventListener('submit', async (e) => {
   if (createdId !== null) {
     newOrderPanel.hidden = true;
     navigate(`order=${createdId}&created=1`);
+    openedOrderFromApp = true;
     loadMonth();
-    loadUpcoming();
   }
 });
 
@@ -466,16 +494,18 @@ function moveMonth(delta) {
 
 document.getElementById('prevMonth').addEventListener('click', () => moveMonth(-1));
 document.getElementById('nextMonth').addEventListener('click', () => moveMonth(1));
-document.getElementById('todayBtn').addEventListener('click', () => navigate(`date=${todayStr}`));
+document.getElementById('todayBtn').addEventListener('click', () => {
+  viewYear = today.getFullYear();
+  viewMonth = today.getMonth() + 1;
+  loadMonth();
+});
 
 // 다른 사람이 주문을 추가했을 수 있으니, 탭으로 돌아오면 다시 불러온다.
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState !== 'visible') return;
   loadMonth();
-  loadUpcoming();
-  if (!dayViewEl.hidden && selectedDate) loadDayOrders(selectedDate);
+  if (!dayViewEl.hidden) loadDayOrders(selectedDate);
 });
 
 loadMonth();
-loadUpcoming();
 route();
