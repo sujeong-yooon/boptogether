@@ -294,3 +294,7 @@ end;
 $$;
 
 grant execute on function verify_order_pin(bigint, text) to anon, authenticated;
+
+-- ── 이후 변경
+--    새 프로젝트라면 이 파일을 실행한 뒤 supabase/migrations/ 안의 파일을 이름 순서대로 실행하세요.
+--    20261001_lunch_recruit.sql: 모집 마감, 인원 상한, 방식, 메뉴판 링크, 진행 상태. 퀴즈는 계좌 등록 때 받음.

@@ -1192,7 +1192,7 @@ button.back-link {
 
 .join-form {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr) auto;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) minmax(0, 1fr) auto;
   gap: 0 12px;
   align-items: end;
   margin-top: 14px;
@@ -1269,4 +1269,288 @@ button.back-link {
   animation: none;
   opacity: 1;
   transform: none;
+}
+
+/* ── 모임 열기: 칩, 인원 조절 */
+.field {
+  margin-top: 14px;
+}
+
+.field:first-child {
+  margin-top: 0;
+}
+
+.field > label {
+  margin-top: 0;
+}
+
+.field-label {
+  display: block;
+  font-size: 13px;
+  letter-spacing: 0.01em;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+
+.field-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0 24px;
+}
+
+.field-row {
+  margin-top: 14px;
+}
+
+.field-row .field {
+  margin-top: 0;
+}
+
+.field-note {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--today);
+}
+
+.field-note:empty {
+  display: none;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chip {
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: #fff;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out);
+}
+
+.chip[aria-checked='true'] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.chip:focus-visible,
+.stepper button:focus-visible,
+.same-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.chip-extra {
+  margin-top: 8px;
+  max-width: 220px;
+}
+
+.add-link {
+  margin-top: 6px;
+  font-size: 13px;
+}
+
+#menuUrl {
+  margin-top: 8px;
+}
+
+input[type='url'] {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  background: #fff;
+  color: var(--text);
+}
+
+.stepper {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: #fff;
+}
+
+.stepper button {
+  width: 38px;
+  height: 36px;
+  border: none;
+  background: none;
+  font-size: 18px;
+  color: var(--accent);
+  cursor: pointer;
+  border-radius: 999px;
+}
+
+.stepper button:disabled {
+  color: var(--border);
+  cursor: not-allowed;
+}
+
+.stepper output {
+  min-width: 64px;
+  text-align: center;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+#newOrderForm .form-grid {
+  margin-top: 4px;
+}
+
+/* ── 모집 상태 배지 */
+.state-badge {
+  display: inline-block;
+  flex-shrink: 0;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+  background: #e5f0ec;
+  color: var(--today);
+}
+
+.state-badge.soon {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.state-badge.full,
+.state-badge.closed,
+.state-badge.ordered,
+.state-badge.done {
+  background: var(--bg);
+  color: var(--text-muted);
+}
+
+/* ── 목록 카드 */
+.order-list-item .oi-main {
+  min-width: 0;
+}
+
+.order-list-item .oi-top {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+}
+
+.order-list-item .names {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 4px;
+  word-break: keep-all;
+  overflow-wrap: break-word;
+}
+
+.order-list-item.inactive {
+  background: transparent;
+  box-shadow: none;
+  border: 1px dashed var(--border);
+}
+
+.order-list-item.inactive .store {
+  color: var(--text-muted);
+}
+
+/* ── 상세 머리 */
+.title-wrap {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  min-width: 0;
+}
+
+.menu-link {
+  color: var(--accent);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.menu-link:hover {
+  text-decoration: underline;
+}
+
+/* ── 참여자: 같은 걸로 */
+.same-btn {
+  margin-left: 6px;
+  padding: 1px 7px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  vertical-align: 1px;
+}
+
+#participantList.closed .same-btn {
+  display: none;
+}
+
+.closed-note {
+  margin: 14px 0 0;
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+/* ── 주문자: 진행 상태 */
+.status-steps .steps {
+  display: flex;
+  list-style: none;
+  margin: 4px 0 10px;
+  padding: 0;
+  gap: 4px;
+}
+
+.status-steps .steps li {
+  flex: 1;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  padding: 6px 0;
+  border-radius: 8px;
+  background: var(--bg);
+}
+
+.status-steps .steps li.past {
+  color: var(--today);
+}
+
+.status-steps .steps li.now {
+  background: var(--accent);
+  color: #fff;
+}
+
+.status-steps .step-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+@media (max-width: 560px) {
+  .field-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .field-row .field + .field {
+    margin-top: 14px;
+  }
 }

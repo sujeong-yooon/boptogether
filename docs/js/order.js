@@ -26,7 +26,11 @@ const ownerLoginBtn = document.getElementById('ownerLoginBtn');
 const ownerLoginError = document.getElementById('ownerLoginError');
 const ownerPanelEl = document.getElementById('ownerPanel');
 const ownerBadgeEl = document.getElementById('ownerBadge');
+const stateBadgeEl = document.getElementById('stateBadge');
+const joinClosedNoteEl = document.getElementById('joinClosedNote');
+const statusStepsEl = document.getElementById('statusSteps');
 
+// 인원 상한의 최댓값. 주문마다 정한 값은 orders.max_participants
 const MAX_PARTICIPANTS = 10;
 const pinKey = () => `bt:pin:${orderId}`;
 const mineKey = () => `bt:mine:${orderId}`;
@@ -34,7 +38,48 @@ const mineKey = () => `bt:mine:${orderId}`;
 // pin_hash/quiz_answer_hash/계좌 정보는 절대 일반 조회로 내려받지 않도록
 // 컬럼을 명시적으로 지정 (계좌는 reveal_settlement() 함수로 퀴즈를 맞혀야만 받아옴)
 const ORDER_COLUMNS =
-  'id, orderer_name, store_name, order_date, order_time, quiz_question, created_at';
+  'id, orderer_name, store_name, order_date, order_time, quiz_question, created_at, ' +
+  'deadline_time, max_participants, order_type, menu_url, status';
+
+const ORDER_TYPE_LABELS = { delivery: '배달', pickup: '포장', dine_in: '같이 가서 먹기' };
+
+// ── 모집 상태
+// 진행 상태(status)는 주문자가 바꾸고, 모집 마감과 자리 없음은 시각과 인원으로 계산한다.
+function maxOf(order) {
+  return order.max_participants || MAX_PARTICIPANTS;
+}
+
+function deadlineOf(order) {
+  const hhmm = (order.deadline_time || order.order_time || '23:59').slice(0, 5);
+  return new Date(`${order.order_date}T${hhmm}:00`);
+}
+
+function recruitState(order, count) {
+  const status = order.status || 'open';
+  if (status === 'done') return { key: 'done', label: '정산 끝', joinable: false };
+  if (status === 'ordered') return { key: 'ordered', label: '주문 완료', joinable: false };
+  if (count >= maxOf(order)) return { key: 'full', label: '자리 없음', joinable: false };
+  const left = Math.ceil((deadlineOf(order) - Date.now()) / 60000);
+  if (left <= 0) return { key: 'closed', label: '모집 마감', joinable: false };
+  if (left <= 60) return { key: 'soon', label: `마감 ${left}분 전`, joinable: true, left };
+  return {
+    key: 'open',
+    label: `${formatKoreanTime(order.deadline_time || order.order_time)} 마감`,
+    joinable: true,
+    left,
+  };
+}
+
+// '12:00 배달' 처럼 시각과 방식
+function whenAndType(order) {
+  const type = ORDER_TYPE_LABELS[order.order_type];
+  return `${formatKoreanTime(order.order_time)}${type ? ` ${type}` : ''}`;
+}
+
+// http(s) 주소만 링크로 연다
+function safeMenuUrl(order) {
+  return order.menu_url && /^https?:\/\//i.test(order.menu_url) ? order.menu_url : null;
+}
 
 let currentOrder = null;
 // 서버에서 확인된 관리 비밀번호. 값이 있으면 주문자 화면을 보여준다.
@@ -124,7 +169,7 @@ function exitOwnerMode() {
   ownerPin = null;
   revealedAccount = null;
   forgetPin();
-  ['bankName', 'accountHolder', 'accountNumber'].forEach((id) => {
+  ['bankName', 'accountHolder', 'accountNumber', 'quizQuestion', 'quizAnswer'].forEach((id) => {
     document.getElementById(id).value = '';
   });
   ownerLoginForm.hidden = true;
@@ -237,27 +282,74 @@ function render() {
   const order = currentOrder;
   document.title = `${order.store_name} - 밥투게더`;
   storeNameEl.textContent = order.store_name;
-  infoRowEl.innerHTML = `
-    <span>👤 주문자 ${escapeHtml(order.orderer_name)}</span>
-    <span>📅 ${escapeHtml(formatKoreanDate(order.order_date))}</span>
-    <span>🕒 ${escapeHtml(formatKoreanTime(order.order_time))}</span>
-  `;
   shareBtn.hidden = false;
   orderBodyEl.hidden = false;
   ownerBadgeEl.hidden = !isOwner();
   ownerPanelEl.hidden = !isOwner();
   ownerEntryEl.hidden = isOwner();
+  if (isOwner()) {
+    const q = document.getElementById('quizQuestion');
+    if (!q.value && order.quiz_question) q.value = order.quiz_question;
+    document.getElementById('quizAnswer').placeholder = order.quiz_question
+      ? '바꿀 때만 입력하세요'
+      : '참여자들에게 알려줄 정답이에요';
+  }
 
+  renderHeader();
   renderParticipants();
   renderSettlement();
+  renderStatusSteps();
+}
+
+function currentState() {
+  return recruitState(currentOrder, currentOrder.participants.length);
+}
+
+// 시각에 따라 바뀌는 부분. 30초마다 다시 그린다 (입력칸이 있는 참여자 목록은 건드리지 않음).
+function renderHeader() {
+  const order = currentOrder;
+  const state = currentState();
+  const menuUrl = safeMenuUrl(order);
+  stateBadgeEl.hidden = false;
+  stateBadgeEl.className = `state-badge ${state.key}`;
+  stateBadgeEl.textContent = state.label;
+  infoRowEl.innerHTML = `
+    <span>📅 ${escapeHtml(formatKoreanDate(order.order_date))} ${escapeHtml(whenAndType(order))}</span>
+    <span>⏰ 모집 마감 ${escapeHtml(formatKoreanTime(order.deadline_time || order.order_time))}</span>
+    <span>👤 주문자 ${escapeHtml(order.orderer_name)}</span>
+    ${
+      menuUrl
+        ? `<a class="menu-link" href="${escapeHtml(menuUrl)}" target="_blank" rel="noopener noreferrer">메뉴판 보기 ↗</a>`
+        : ''
+    }
+  `;
+  updateJoinState(state);
+}
+
+function closedMessage(state) {
+  if (state.key === 'full') return '자리가 다 찼어요. 주문자에게 인원을 늘려달라고 해보세요.';
+  if (state.key === 'closed') return '모집 시간이 지났어요.';
+  if (state.key === 'ordered') return '주문이 들어갔어요. 이제 정산만 남았어요.';
+  if (state.key === 'done') return '정산까지 끝난 모임이에요.';
+  return '';
+}
+
+function updateJoinState(state) {
+  const closed = !state.joinable;
+  joinForm.hidden = closed;
+  joinClosedNoteEl.hidden = !closed;
+  joinClosedNoteEl.textContent = closedMessage(state);
+  participantListEl.classList.toggle('closed', closed);
 }
 
 function renderParticipants() {
   const participants = currentOrder.participants;
-  const full = participants.length >= MAX_PARTICIPANTS;
+  const max = maxOf(currentOrder);
   const owner = isOwner();
   const mine = myParticipantIds();
-  countBadgeEl.textContent = `${participants.length}/${MAX_PARTICIPANTS}명`;
+  const left = max - participants.length;
+  const joinable = currentState().joinable;
+  countBadgeEl.textContent = `${participants.length}/${max}명${joinable ? `, ${left}자리 남음` : ''}`;
   participantEmptyEl.hidden = participants.length > 0;
   participantListEl.innerHTML = '';
   // 등장 애니메이션은 주문을 처음 열 때만. 다시 그릴 때마다 돌면 목록이 깜빡인다.
@@ -279,7 +371,7 @@ function renderParticipants() {
         }</span>`;
     row.innerHTML = `
       <span class="name">${escapeHtml(p.name)}${isMine ? ' <small class="me">나</small>' : ''}</span>
-      <span class="menu">${escapeHtml(p.menu)}</span>
+      <span class="menu">${escapeHtml(p.menu)}<button type="button" class="same-btn">같은 걸로</button></span>
       ${amountCell}
       ${
         canRemove
@@ -296,12 +388,20 @@ function renderParticipants() {
     }
     const removeBtn = row.querySelector('.remove-btn');
     if (removeBtn) removeBtn.addEventListener('click', () => removeParticipant(p));
+    row.querySelector('.same-btn').addEventListener('click', () => copyMenu(p));
     participantListEl.appendChild(row);
   });
 
-  joinBtn.disabled = full;
-  joinBtn.textContent = full ? `참여 마감 (${MAX_PARTICIPANTS}/${MAX_PARTICIPANTS})` : '참여하기';
-  joinForm.querySelectorAll('input').forEach((el) => (el.disabled = full));
+  updateJoinState(currentState());
+}
+
+// 다른 사람 메뉴를 참여 칸에 그대로 담는다
+function copyMenu(p) {
+  document.getElementById('joinMenu').value = p.menu;
+  document.getElementById('joinPrice').value = p.amount ?? '';
+  const nameEl = document.getElementById('joinName');
+  (nameEl.value ? joinBtn : nameEl).focus();
+  joinForm.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
 function settlementTotals() {
@@ -329,6 +429,8 @@ function renderSettlement() {
          </div>
          <button type="button" class="btn full secondary" id="copyAccountBtn">계좌번호 복사</button>`
       : `<div class="row account"><span class="label">입금 계좌</span><span class="value muted">${emptyMsg}</span></div>`;
+  } else if (!order.quiz_question) {
+    accountHtml = `<div class="row account"><span class="label">입금 계좌</span><span class="value muted">주문자가 아직 등록하지 않았어요</span></div>`;
   } else {
     accountHtml = `
       <div class="reveal-box">
@@ -471,9 +573,16 @@ joinForm.addEventListener('submit', async (e) => {
 
   const name = document.getElementById('joinName').value.trim();
   const menu = document.getElementById('joinMenu').value.trim();
+  const priceRaw = document.getElementById('joinPrice').value.trim();
+  const amount = priceRaw === '' ? null : Math.round(Number(priceRaw));
 
   if (!name || !menu) {
     joinError.textContent = '이름과 메뉴를 입력해주세요.';
+    joinError.classList.add('show');
+    return;
+  }
+  if (amount !== null && (!Number.isFinite(amount) || amount < 0)) {
+    joinError.textContent = '가격은 0 이상의 숫자로 입력해주세요.';
     joinError.classList.add('show');
     return;
   }
@@ -486,13 +595,19 @@ joinForm.addEventListener('submit', async (e) => {
   let joined = false;
   await withBusy(joinBtn, '등록 중...', async () => {
     const { data, error } = await withTimeout(
-      supabaseClient.from('participants').insert({ order_id: orderId, name, menu }).select('id').single()
+      supabaseClient
+        .from('participants')
+        .insert({ order_id: orderId, name, menu, amount })
+        .select('id')
+        .single()
     );
     if (error) {
       console.error(error);
       joinError.textContent = error.message.includes('MAX_PARTICIPANTS_REACHED')
-        ? `참여자는 최대 ${MAX_PARTICIPANTS}명까지 가능해요.`
-        : connectionErrorMessage(error);
+        ? '방금 자리가 다 찼어요.'
+        : error.message.includes('ORDER_CLOSED')
+          ? '주문자가 모집을 마감했어요.'
+          : connectionErrorMessage(error);
       joinError.classList.add('show');
       return;
     }
@@ -505,6 +620,7 @@ joinForm.addEventListener('submit', async (e) => {
   if (joined) {
     safeStore.set('localStorage', 'bt:myName', name);
     document.getElementById('joinMenu').value = '';
+    document.getElementById('joinPrice').value = '';
     showToast('참여가 등록되었어요!');
   }
 });
@@ -517,8 +633,21 @@ settleForm.addEventListener('submit', async (e) => {
   const bank = document.getElementById('bankName').value.trim();
   const holder = document.getElementById('accountHolder').value.trim();
   const number = document.getElementById('accountNumber').value.trim();
+  const question = document.getElementById('quizQuestion').value.trim();
+  const answerEl = document.getElementById('quizAnswer');
+  const answer = answerEl.value.trim();
   if (!bank || !holder || !number) {
     showToast('은행명, 예금주, 계좌번호를 모두 입력해주세요.');
+    return;
+  }
+  // 퀴즈가 아직 없으면 둘 다 필요하고, 있으면 정답을 새로 쓴 경우에만 바꾼다
+  const hasQuiz = Boolean(currentOrder.quiz_question);
+  if (!hasQuiz && (!question || !answer)) {
+    showToast('계좌를 보여줄 퀴즈 질문과 정답도 입력해주세요.');
+    return;
+  }
+  if (answer && !question) {
+    showToast('퀴즈 질문을 입력해주세요.');
     return;
   }
 
@@ -530,6 +659,8 @@ settleForm.addEventListener('submit', async (e) => {
         p_bank_name: bank,
         p_account_holder: holder,
         p_account_number: number,
+        p_quiz_question: answer ? question : null,
+        p_quiz_answer: answer || null,
       })
     );
 
@@ -538,6 +669,9 @@ settleForm.addEventListener('submit', async (e) => {
       showToast(handleOwnerError(error, '저장에 실패했어요.'));
       return;
     }
+    if (answer) currentOrder.quiz_question = question;
+    answerEl.value = '';
+    answerEl.placeholder = '바꿀 때만 입력하세요';
     revealedAccount = { bank_name: bank, account_holder: holder, account_number: number };
     renderSettlement();
     showToast('정산 계좌가 저장되었어요.');
@@ -566,19 +700,103 @@ deleteOrderBtn.addEventListener('click', async () => {
   });
 });
 
+function dayWord(dateStr) {
+  const d = new Date();
+  const iso = (x) =>
+    `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`;
+  if (dateStr === iso(d)) return '오늘';
+  d.setDate(d.getDate() + 1);
+  if (dateStr === iso(d)) return '내일';
+  return formatKoreanDate(dateStr);
+}
+
+// 메신저에 그대로 붙여넣을 모집 글
+function recruitText() {
+  const o = currentOrder;
+  const state = currentState();
+  const left = maxOf(o) - o.participants.length;
+  const head = `[밥투게더] ${dayWord(o.order_date)} ${whenAndType(o)} ${o.store_name}`;
+  const tail = state.joinable
+    ? `같이 드실 분! ${formatKoreanTime(o.deadline_time || o.order_time)} 마감, ${left}자리 남았어요.`
+    : `${state.label}. 메뉴와 정산은 링크에서 확인해주세요.`;
+  return `${head}\n${tail}\n${shareUrl()}`;
+}
+
 shareBtn.addEventListener('click', async () => {
-  const url = shareUrl();
+  const text = recruitText();
   if (navigator.share && window.matchMedia('(pointer: coarse)').matches) {
     try {
-      await navigator.share({ title: `${currentOrder.store_name} 같이 주문해요`, url });
+      await navigator.share({ text });
       return;
     } catch (e) {
       if (e && e.name === 'AbortError') return;
     }
   }
-  const ok = await copyText(url);
-  showToast(ok ? '링크를 복사했어요. 함께 먹을 사람들에게 보내주세요.' : '복사에 실패했어요.');
+  const ok = await copyText(text);
+  showToast(ok ? '모집 글을 복사했어요. 메신저에 붙여넣어 주세요.' : '복사에 실패했어요.');
 });
+
+// ── 진행 상태 (주문자)
+const STATUS_ACTIONS = {
+  open: [{ to: 'ordered', label: '모집 마감하고 주문하기', primary: true }],
+  ordered: [
+    { to: 'done', label: '정산 끝내기', primary: true },
+    { to: 'open', label: '모집 다시 열기' },
+  ],
+  done: [{ to: 'ordered', label: '정산 다시 열기' }],
+};
+
+function renderStatusSteps() {
+  if (!isOwner()) {
+    statusStepsEl.innerHTML = '';
+    return;
+  }
+  const status = currentOrder.status || 'open';
+  const steps = [
+    ['open', '모집 중'],
+    ['ordered', '주문 완료'],
+    ['done', '정산 끝'],
+  ];
+  const idx = steps.findIndex(([k]) => k === status);
+  statusStepsEl.innerHTML = `
+    <ol class="steps">${steps
+      .map(([, label], i) => `<li class="${i < idx ? 'past' : i === idx ? 'now' : ''}">${label}</li>`)
+      .join('')}</ol>
+    <div class="step-actions">${STATUS_ACTIONS[status]
+      .map(
+        (a) =>
+          `<button type="button" class="btn ${a.primary ? '' : 'secondary'} small" data-to="${a.to}">${a.label}</button>`
+      )
+      .join('')}</div>`;
+  statusStepsEl.querySelectorAll('[data-to]').forEach((btn) => {
+    btn.addEventListener('click', () => changeStatus(btn, btn.dataset.to));
+  });
+}
+
+async function changeStatus(btn, to) {
+  const pin = ownerPin;
+  if (!pin) return;
+  await withBusy(btn, '바꾸는 중...', async () => {
+    const { error } = await withTimeout(
+      supabaseClient.rpc('set_order_status', { p_order_id: orderId, p_pin: pin, p_status: to })
+    );
+    if (error) {
+      console.error(error);
+      showToast(handleOwnerError(error, '상태를 바꾸지 못했어요.'));
+      return;
+    }
+    currentOrder.status = to;
+    showToast(
+      to === 'ordered' ? '모집을 마감했어요.' : to === 'done' ? '정산을 끝냈어요.' : '다시 열었어요.'
+    );
+  });
+  if (currentOrder) render();
+}
+
+// 마감까지 남은 시간이 흐르도록 30초마다 머리만 다시 그린다
+setInterval(() => {
+  if (currentOrder && !orderViewEl.hidden) renderHeader();
+}, 30000);
 
 managePinEl.addEventListener('input', () => {
   managePinEl.value = managePinEl.value.replace(/\D/g, '').slice(0, 4);
@@ -632,7 +850,7 @@ function openOrderView(id, { created = false } = {}) {
   ownerLoginError.classList.remove('show');
   joinError.classList.remove('show');
   managePinEl.value = '';
-  ['bankName', 'accountHolder', 'accountNumber', 'joinMenu'].forEach((elId) => {
+  ['bankName', 'accountHolder', 'accountNumber', 'quizQuestion', 'quizAnswer', 'joinMenu', 'joinPrice'].forEach((elId) => {
     document.getElementById(elId).value = '';
   });
   document.getElementById('joinName').value = safeStore.get('localStorage', 'bt:myName') || '';
