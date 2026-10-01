@@ -619,6 +619,7 @@ joinForm.addEventListener('submit', async (e) => {
   await loadOrder();
   if (joined) {
     safeStore.set('localStorage', 'bt:myName', name);
+    applyKnownName(document.getElementById('joinName'), document.getElementById('joinAsName'), '참여해요');
     document.getElementById('joinMenu').value = '';
     document.getElementById('joinPrice').value = '';
     showToast('참여가 등록되었어요!');
@@ -853,7 +854,7 @@ function openOrderView(id, { created = false } = {}) {
   ['bankName', 'accountHolder', 'accountNumber', 'quizQuestion', 'quizAnswer', 'joinMenu', 'joinPrice'].forEach((elId) => {
     document.getElementById(elId).value = '';
   });
-  document.getElementById('joinName').value = safeStore.get('localStorage', 'bt:myName') || '';
+  applyKnownName(document.getElementById('joinName'), document.getElementById('joinAsName'), '참여해요');
 
   if (id === null) {
     storeNameEl.textContent = '잘못된 접근입니다';

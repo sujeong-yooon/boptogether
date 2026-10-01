@@ -47,6 +47,25 @@ const safeStore = {
   },
 };
 
+// 기억한 이름이 있으면 이름 칸을 숨기고 그 이름으로 바로 쓴다. 바꿀 때만 칸을 다시 연다.
+function applyKnownName(input, note, verb) {
+  const name = safeStore.get('localStorage', 'bt:myName') || '';
+  const field = input.closest('div');
+  input.value = name;
+  field.hidden = Boolean(name);
+  note.hidden = !name;
+  input.form.classList.toggle('named', Boolean(name));
+  if (!name) return;
+  note.innerHTML = `<b>${escapeHtml(name)}</b> 님으로 ${verb}. <button type="button" class="link-btn muted">이름 바꾸기</button>`;
+  note.querySelector('button').addEventListener('click', () => {
+    field.hidden = false;
+    note.hidden = true;
+    input.form.classList.remove('named');
+    input.focus();
+    input.select();
+  });
+}
+
 const DOW_LABELS = ['일', '월', '화', '수', '목', '금', '토'];
 
 // 'YYYY-MM-DD' → '9월 30일 (수)'

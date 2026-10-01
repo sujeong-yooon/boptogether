@@ -509,7 +509,7 @@ document.getElementById('menuUrlToggle').addEventListener('click', (e) => {
 function openNewOrderPanel() {
   newOrderForm.reset();
   newOrderError.classList.remove('show');
-  document.getElementById('ordererName').value = safeStore.get('localStorage', 'bt:myName') || '';
+  applyKnownName(document.getElementById('ordererName'), document.getElementById('ordererAsName'), '모임을 열어요');
 
   // 고른 날짜가 있으면 그 날짜로, 없으면 오늘. 점심이 지났으면 내일을 먼저 고른다.
   const base = selectedDate && selectedDate >= todayStr ? selectedDate : null;

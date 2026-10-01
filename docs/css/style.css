@@ -1554,3 +1554,29 @@ input[type='url'] {
     margin-top: 14px;
   }
 }
+
+/* ── 기억한 이름으로 바로 쓰기 */
+.join-form.named {
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) auto;
+}
+
+.as-name {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.as-name b {
+  color: var(--text);
+}
+
+.as-name .link-btn {
+  font-size: 12px;
+  margin-left: 4px;
+}
+
+@media (max-width: 560px) {
+  .join-form.named {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
